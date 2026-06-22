@@ -1,5 +1,46 @@
-# dependencies
+# dependencies (all packages in the monorepo)
 node_modules/
-# env / secrets
+
+# environment / secrets — never commit
 .env
 .env.*
+!.env.example
+
+# Vercel local link metadata
+.vercel/
+
+# Next.js build output
+.next/
+out/
+build/
+
+# Lambda deployment artifact (rebuild with infrastructure/deploy-lambda.sh)
+telemetry_fanout_lambda.zip
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# credentials / keys
+*.pem
+*.key
+id_rsa
+id_rsa.*
+*.p12
+*.pfx
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# test / coverage
+coverage/

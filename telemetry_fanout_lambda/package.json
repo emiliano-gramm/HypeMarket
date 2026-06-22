@@ -1,0 +1,10 @@
+{
+  "name": "telemetry-fanout-lambda",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/client-iot-data-plane": "^3.1068.0",
+    "@aws-sdk/util-dynamodb": "^3.996.4"
+  }
+}
