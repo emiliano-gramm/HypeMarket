@@ -1,8 +1,15 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, MessageSquare, Radio, Send, Vote } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  Check,
+  Loader2,
+  MessageSquare,
+  Radio,
+  Send,
+  Vote,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   castVote,
   getViewerVote,
@@ -12,6 +19,11 @@ import type { ChatMessage } from "@/lib/telemetry/types";
 import { useViewerId } from "@/lib/viewer/useViewerId";
 
 const POLL_REFRESH_MS = 2000;
+const SYNCED_BANNER_MS = 2500;
+/** Keep bypassing CDN cache briefly after a vote so stale edge responses cannot regress totals. */
+const POST_VOTE_CACHE_BYPASS_MS = 30_000;
+
+type SyncStatus = "idle" | "syncing" | "synced" | "error";
 
 const MOCK_CHAT: ChatMessage[] = [
   { user: "vortex_gg", text: "Alpha is cracked this map, no contest", color: "#a78bfa" },
@@ -30,6 +42,41 @@ type PollApiResponse =
     }
   | { ok: false; message: string };
 
+function mergePollOptions(
+  serverOptions: PollOptionState[],
+  floors: Record<string, number>,
+  currentOptions: PollOptionState[]
+): PollOptionState[] {
+  const currentByKey = new Map(
+    currentOptions.map((option) => [option.optionKey, option.votes])
+  );
+
+  return serverOptions.map((option) => ({
+    ...option,
+    // Never regress displayed counts — poll totals only go up in this UI.
+    votes: Math.max(
+      option.votes,
+      floors[option.optionKey] ?? 0,
+      currentByKey.get(option.optionKey) ?? 0
+    ),
+  }));
+}
+
+function clearConfirmedFloors(
+  floors: Record<string, number>,
+  serverOptions: PollOptionState[]
+): Record<string, number> {
+  const next = { ...floors };
+  for (const [optionKey, floor] of Object.entries(floors)) {
+    const serverOption = serverOptions.find((o) => o.optionKey === optionKey);
+    // Only drop the floor once the server (not our merge) reports the count.
+    if (serverOption && serverOption.votes >= floor) {
+      delete next[optionKey];
+    }
+  }
+  return next;
+}
+
 function PollSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-hidden="true">
@@ -44,6 +91,115 @@ function PollSkeleton() {
   );
 }
 
+function PollOptionButton({
+  option,
+  pct,
+  selected,
+  disabled,
+  syncing,
+  bumpToken,
+  onVote,
+}: {
+  option: PollOptionState;
+  pct: number;
+  selected: boolean;
+  disabled: boolean;
+  syncing: boolean;
+  bumpToken: number;
+  onVote: () => void;
+}) {
+  return (
+    <motion.button
+      type="button"
+      disabled={disabled}
+      onClick={onVote}
+      whileTap={disabled ? undefined : { scale: 0.985 }}
+      className={`group relative w-full overflow-hidden rounded-md border px-3 py-2.5 text-left transition-colors ${
+        selected
+          ? "border-brand/60 bg-brand/10"
+          : "border-edge bg-panel-2 hover:border-brand/40"
+      } ${disabled ? "cursor-default" : "cursor-pointer"}`}
+    >
+      {selected && syncing && (
+        <motion.span
+          aria-hidden
+          className="pointer-events-none absolute inset-0 rounded-md ring-2 ring-brand/50"
+          animate={{ opacity: [0.35, 0.85, 0.35] }}
+          transition={{ duration: 1.1, repeat: Infinity, ease: "easeInOut" }}
+        />
+      )}
+      <motion.span
+        className={`absolute inset-y-0 left-0 ${selected ? "bg-brand/25" : "bg-ink/10"}`}
+        initial={false}
+        animate={{ width: `${pct}%` }}
+        transition={{ duration: syncing ? 0.35 : 0.65, ease: "easeOut" }}
+      />
+      <span className="relative flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {selected && (
+              <motion.span
+                key="check"
+                initial={{ scale: 0, opacity: 0, rotate: -45 }}
+                animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 520, damping: 28 }}
+              >
+                <Check className="h-3.5 w-3.5 text-brand-strong" />
+              </motion.span>
+            )}
+          </AnimatePresence>
+          {option.label}
+        </span>
+        <motion.span
+          key={bumpToken > 0 ? `${option.optionKey}-bump-${bumpToken}` : option.optionKey}
+          initial={bumpToken > 0 ? { scale: 1.3, y: -2, opacity: 0.5 } : false}
+          animate={{ scale: 1, y: 0, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 400, damping: 22 }}
+          className="font-mono text-xs font-bold tabular-nums text-ink"
+        >
+          {pct}% · {option.votes.toLocaleString()}
+        </motion.span>
+      </span>
+    </motion.button>
+  );
+}
+
+function SyncBanner({ status, message }: { status: SyncStatus; message: string | null }) {
+  if (status === "idle" && !message) return null;
+
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      {(status === "syncing" || status === "synced" || message) && (
+        <motion.div
+          key={status === "error" ? "error" : status}
+          initial={{ opacity: 0, y: -4, height: 0 }}
+          animate={{ opacity: 1, y: 0, height: "auto" }}
+          exit={{ opacity: 0, y: -4, height: 0 }}
+          transition={{ duration: 0.2 }}
+          className="mb-3 overflow-hidden"
+        >
+          {status === "syncing" && (
+            <p className="flex items-center gap-1.5 text-xs text-brand-strong">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Syncing vote to sharded DSQL counters…
+            </p>
+          )}
+          {status === "synced" && (
+            <p className="flex items-center gap-1.5 text-xs text-emerald-400">
+              <Check className="h-3 w-3" />
+              Vote recorded — tally updates globally via edge cache
+            </p>
+          )}
+          {status === "error" && message && (
+            <p className="text-xs text-amber-400">{message}</p>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 export function SocialPanel() {
   const viewerId = useViewerId();
   const [options, setOptions] = useState<PollOptionState[]>([]);
@@ -51,32 +207,60 @@ export function SocialPanel() {
   const [votedFor, setVotedFor] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [voteError, setVoteError] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [isLoading, setIsLoading] = useState(true);
-  const [isPending, startTransition] = useTransition();
   const [chatDraft, setChatDraft] = useState("");
 
-  const refreshTotals = useCallback(async (bypassCache = false) => {
-    try {
-      const response = await fetch(
-        "/api/polls",
-        bypassCache ? { cache: "no-store" } : undefined
+  const optimisticFloorsRef = useRef<Record<string, number>>({});
+  const postVoteBypassUntilRef = useRef(0);
+  const syncedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [voteBumpToken, setVoteBumpToken] = useState(0);
+
+  const applyServerOptions = useCallback((serverOptions: PollOptionState[]) => {
+    setOptions((current) => {
+      const merged = mergePollOptions(
+        serverOptions,
+        optimisticFloorsRef.current,
+        current
       );
-      const result = (await response.json()) as PollApiResponse;
-
-      if (!result.ok) {
-        setLoadError(result.message);
-        return;
-      }
-
-      setQuestion(result.state.question);
-      setOptions(result.state.options);
-      setLoadError(null);
-    } catch {
-      setLoadError("Failed to load poll totals");
-    } finally {
-      setIsLoading(false);
-    }
+      optimisticFloorsRef.current = clearConfirmedFloors(
+        optimisticFloorsRef.current,
+        serverOptions
+      );
+      return merged;
+    });
   }, []);
+
+  const refreshTotals = useCallback(
+    async (bypassCache = false) => {
+      const hasPendingFloors =
+        Object.keys(optimisticFloorsRef.current).length > 0;
+      const inPostVoteWindow = Date.now() < postVoteBypassUntilRef.current;
+      const useFreshFetch = bypassCache || hasPendingFloors || inPostVoteWindow;
+
+      try {
+        const response = await fetch(
+          "/api/polls",
+          useFreshFetch ? { cache: "no-store" } : undefined
+        );
+        const result = (await response.json()) as PollApiResponse;
+
+        if (!result.ok) {
+          setLoadError(result.message);
+          return;
+        }
+
+        setQuestion(result.state.question);
+        applyServerOptions(result.state.options);
+        setLoadError(null);
+      } catch {
+        setLoadError("Failed to load poll totals");
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [applyServerOptions]
+  );
 
   const refreshViewerVote = useCallback(async () => {
     if (!viewerId) return;
@@ -97,41 +281,86 @@ export function SocialPanel() {
     void refreshViewerVote();
   }, [viewerId, refreshViewerVote]);
 
+  useEffect(() => {
+    return () => {
+      if (syncedTimerRef.current) clearTimeout(syncedTimerRef.current);
+    };
+  }, []);
+
   const totalVotes = useMemo(
     () => options.reduce((sum, option) => sum + option.votes, 0),
     [options]
   );
 
-  function handleVote(optionKey: string) {
-    if (!viewerId || votedFor || isPending) return;
+  const markSynced = useCallback(() => {
+    setSyncStatus("synced");
+    if (syncedTimerRef.current) clearTimeout(syncedTimerRef.current);
+    syncedTimerRef.current = setTimeout(() => {
+      setSyncStatus("idle");
+    }, SYNCED_BANNER_MS);
+  }, []);
 
+  async function handleVote(optionKey: string) {
+    if (!viewerId || votedFor || syncStatus === "syncing") return;
+
+    const snapshot = {
+      options: options.map((o) => ({ ...o })),
+      votedFor,
+    };
+
+    const priorVotes =
+      options.find((o) => o.optionKey === optionKey)?.votes ?? 0;
+    const optimisticFloor = priorVotes + 1;
+
+    optimisticFloorsRef.current[optionKey] = optimisticFloor;
     setVoteError(null);
-    startTransition(async () => {
+    setVotedFor(optionKey);
+    setSyncStatus("syncing");
+    setVoteBumpToken((n) => n + 1);
+    setOptions((prev) =>
+      prev.map((option) =>
+        option.optionKey === optionKey
+          ? { ...option, votes: optimisticFloor }
+          : option
+      )
+    );
+
+    try {
       const result = await castVote(optionKey, viewerId);
+
       if (!result.ok) {
-        setVoteError(result.message);
         if (result.code === "already_voted") {
+          delete optimisticFloorsRef.current[optionKey];
+          setVoteError(result.message);
+          setSyncStatus("error");
           await refreshViewerVote();
           await refreshTotals(true);
+          return;
         }
+
+        delete optimisticFloorsRef.current[optionKey];
+        postVoteBypassUntilRef.current = 0;
+        setOptions(snapshot.options);
+        setVotedFor(snapshot.votedFor);
+        setVoteError(result.message);
+        setSyncStatus("error");
         return;
       }
 
-      setVotedFor(optionKey);
-      setOptions((prev) =>
-        prev.map((option) =>
-          option.optionKey === optionKey
-            ? { ...option, votes: option.votes + 1 }
-            : option
-        )
-      );
-
-      // Bypass CDN cache briefly while the aggregator catches up.
       await refreshTotals(true);
-    });
+      postVoteBypassUntilRef.current = Date.now() + POST_VOTE_CACHE_BYPASS_MS;
+      markSynced();
+    } catch {
+      delete optimisticFloorsRef.current[optionKey];
+      postVoteBypassUntilRef.current = 0;
+      setOptions(snapshot.options);
+      setVotedFor(snapshot.votedFor);
+      setVoteError("Network error — vote not saved. Try again.");
+      setSyncStatus("error");
+    }
   }
 
-  const disabled = Boolean(votedFor) || isLoading || isPending;
+  const pollLocked = Boolean(votedFor) || isLoading || syncStatus === "syncing";
 
   return (
     <aside className="flex h-full flex-col gap-4">
@@ -149,51 +378,33 @@ export function SocialPanel() {
         <div className="p-4">
           <p className="mb-4 text-pretty text-sm font-medium text-ink-muted">{question}</p>
 
-          {voteError && <p className="mb-2 text-xs text-amber-400">{voteError}</p>}
-          {loadError && <p className="mb-2 text-xs text-red-400">{loadError}</p>}
+          <SyncBanner
+            status={syncStatus}
+            message={syncStatus === "error" ? voteError : null}
+          />
+          {loadError && syncStatus !== "error" && (
+            <p className="mb-2 text-xs text-red-400">{loadError}</p>
+          )}
 
           {isLoading ? (
             <PollSkeleton />
           ) : (
             <div className="flex flex-col gap-3">
               {options.map((o) => {
-                const pct = totalVotes > 0 ? Math.round((o.votes / totalVotes) * 100) : 0;
+                const pct =
+                  totalVotes > 0 ? Math.round((o.votes / totalVotes) * 100) : 0;
                 const selected = votedFor === o.optionKey;
                 return (
-                  <button
+                  <PollOptionButton
                     key={o.optionKey}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => handleVote(o.optionKey)}
-                    className={`group relative w-full overflow-hidden rounded-md border px-3 py-2.5 text-left transition-colors ${
-                      selected
-                        ? "border-brand/60 bg-brand/10"
-                        : "border-edge bg-panel-2 hover:border-brand/40"
-                    } ${disabled ? "cursor-default" : "cursor-pointer"}`}
-                  >
-                    {/* animated fill bar — width tracks the live vote share */}
-                    <motion.span
-                      className={`absolute inset-y-0 left-0 ${selected ? "bg-brand/25" : "bg-ink/10"}`}
-                      initial={false}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.8, ease: "easeOut" }}
-                    />
-                    <span className="relative flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
-                        {selected && <Check className="h-3.5 w-3.5 text-brand-strong" />}
-                        {o.label}
-                      </span>
-                      <motion.span
-                        key={`${o.optionKey}-${pct}`}
-                        initial={{ scale: 1.25, opacity: 0.6 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ duration: 0.25 }}
-                        className="font-mono text-xs font-bold tabular-nums text-ink"
-                      >
-                        {pct}% · {o.votes}
-                      </motion.span>
-                    </span>
-                  </button>
+                    option={o}
+                    pct={pct}
+                    selected={selected}
+                    disabled={pollLocked}
+                    syncing={selected && syncStatus === "syncing"}
+                    bumpToken={selected ? voteBumpToken : 0}
+                    onVote={() => void handleVote(o.optionKey)}
+                  />
                 );
               })}
             </div>
@@ -202,21 +413,16 @@ export function SocialPanel() {
           {!isLoading && (
             <div className="mt-3 flex items-center justify-between gap-2">
               <p className="font-mono text-[10px] text-ink-faint">
-                {votedFor ? "thanks for voting — live tally" : "cast your vote — one per viewer"}
+                {syncStatus === "syncing"
+                  ? "optimistic UI — DSQL write in flight"
+                  : votedFor
+                    ? "thanks for voting — live tally"
+                    : "cast your vote — one per viewer"}
               </p>
               <p className="flex items-center gap-1 font-mono text-[10px] text-ink-faint">
-                <AnimatePresence mode="popLayout" initial={false}>
-                  <motion.span
-                    key={totalVotes}
-                    initial={{ y: -6, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: 6, opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="inline-block"
-                  >
-                    {totalVotes.toLocaleString()}
-                  </motion.span>
-                </AnimatePresence>
+                <span className="inline-block tabular-nums">
+                  {totalVotes.toLocaleString()}
+                </span>
                 votes
               </p>
             </div>

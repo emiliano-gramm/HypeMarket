@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REGION="${AWS_REGION:-us-east-2}"
+RUNTIME="${LAMBDA_RUNTIME:-nodejs24.x}"
 FUNCTION_NAME="${POLL_AGGREGATOR_LAMBDA_NAME:-UgePollTotalsAggregator}"
 ROLE_NAME="${POLL_AGGREGATOR_LAMBDA_ROLE:-UgePollTotalsAggregatorLambdaRole}"
 DSQL_HOST="${DSQL_HOST:-bbt3ywfpckyeao5op4g2dkgoti.dsql.us-east-2.on.aws}"
@@ -42,6 +43,7 @@ if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" >
 
   aws lambda update-function-configuration \
     --function-name "$FUNCTION_NAME" \
+    --runtime "$RUNTIME" \
     --environment "Variables={DSQL_HOST=${DSQL_HOST}}" \
     --timeout 30 \
     --memory-size 256 \
@@ -50,7 +52,7 @@ else
   echo "Creating Lambda ${FUNCTION_NAME}..."
   aws lambda create-function \
     --function-name "$FUNCTION_NAME" \
-    --runtime nodejs20.x \
+    --runtime "$RUNTIME" \
     --role "$ROLE_ARN" \
     --handler index.handler \
     --zip-file "fileb://${ROOT}/poll_aggregator_lambda.zip" \
