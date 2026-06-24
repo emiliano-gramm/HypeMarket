@@ -1,0 +1,9 @@
+{
+  "name": "uge-dsql-apply",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/dsql-signer": "^3.996.0",
+    "pg": "^8.16.0"
+  }
+}

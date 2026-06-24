@@ -1,10 +1,18 @@
+# various helpful project utilities for humans
+.project_utils/
+
 # dependencies (all packages in the monorepo)
 node_modules/
+infrastructure/dsql/node_modules/
 
 # environment / secrets — never commit
 .env
 .env.*
 !.env.example
+!**/.env.example
+**/.env.local
+**/cluster.env
+!**/cluster.env.example
 
 # Vercel local link metadata
 .vercel/
@@ -14,8 +22,13 @@ node_modules/
 out/
 build/
 
-# Lambda deployment artifact (rebuild with infrastructure/deploy-lambda.sh)
+# Lambda deployment artifacts (rebuild with infrastructure/*.sh)
 telemetry_fanout_lambda.zip
+poll_aggregator_lambda.zip
+
+# load test outputs and dependencies
+load-tests/results/
+load-tests/mqtt/node_modules/
 
 # OS / editor
 .DS_Store

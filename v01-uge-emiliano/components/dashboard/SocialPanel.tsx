@@ -1,38 +1,113 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  castVote,
+  getViewerVote,
+  type PollOptionState,
+} from "@/app/actions/polls";
 
-interface PollOption {
-  id: string;
-  label: string;
-  votes: number;
-}
+import { useViewerId } from "@/lib/viewer/useViewerId";
 
-const INITIAL_POLL: PollOption[] = [
-  { id: "team-a", label: "Team Alpha", votes: 1284 },
-  { id: "team-b", label: "Team Bravo", votes: 1197 },
-];
+const POLL_REFRESH_MS = 2000;
+
+type PollApiResponse =
+  | {
+      ok: true;
+      state: {
+        question: string;
+        options: PollOptionState[];
+        aggregatedAt: string | null;
+      };
+    }
+  | { ok: false; message: string };
 
 export function SocialPanel() {
-  const [poll, setPoll] = useState(INITIAL_POLL);
+  const viewerId = useViewerId();
+  const [poll, setPoll] = useState<PollOptionState[]>([]);
+  const [question, setQuestion] = useState("Who wins Map 3?");
   const [votedFor, setVotedFor] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [voteError, setVoteError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
   const [chatDraft, setChatDraft] = useState("");
+
+  const refreshTotals = useCallback(async (bypassCache = false) => {
+    try {
+      const response = await fetch(
+        "/api/polls",
+        bypassCache ? { cache: "no-store" } : undefined
+      );
+      const result = (await response.json()) as PollApiResponse;
+
+      if (!result.ok) {
+        setLoadError(result.message);
+        return;
+      }
+
+      setQuestion(result.state.question);
+      setPoll(result.state.options);
+      setLoadError(null);
+    } catch {
+      setLoadError("Failed to load poll totals");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const refreshViewerVote = useCallback(async () => {
+    if (!viewerId) return;
+
+    const result = await getViewerVote(viewerId);
+    if (result.ok) {
+      setVotedFor(result.optionKey);
+    }
+  }, [viewerId]);
+
+  useEffect(() => {
+    void refreshTotals();
+    const interval = setInterval(() => void refreshTotals(), POLL_REFRESH_MS);
+    return () => clearInterval(interval);
+  }, [refreshTotals]);
+
+  useEffect(() => {
+    if (!viewerId) return;
+    void refreshViewerVote();
+  }, [viewerId, refreshViewerVote]);
 
   const totalVotes = useMemo(
     () => poll.reduce((sum, option) => sum + option.votes, 0),
     [poll]
   );
 
-  function handleVote(optionId: string) {
-    if (votedFor) return;
-    setVotedFor(optionId);
-    setPoll((prev) =>
-      prev.map((option) =>
-        option.id === optionId
-          ? { ...option, votes: option.votes + 1 }
-          : option
-      )
-    );
+  function handleVote(optionKey: string) {
+    if (!viewerId || votedFor || isPending) return;
+
+    setVoteError(null);
+    startTransition(async () => {
+      const result = await castVote(optionKey, viewerId);
+      if (!result.ok) {
+        setVoteError(result.message);
+        if (result.code === "already_voted") {
+          await refreshViewerVote();
+          await refreshTotals(true);
+        }
+        return;
+      }
+
+      setVotedFor(optionKey);
+      setPoll((prev) =>
+        prev.map((option) =>
+          option.optionKey === optionKey
+            ? { ...option, votes: option.votes + 1 }
+            : option
+        )
+      );
+
+      // Bypass CDN cache briefly while aggregator catches up.
+      await refreshTotals(true);
+    });
   }
 
   return (
@@ -50,22 +125,33 @@ export function SocialPanel() {
             <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
               Match Poll
             </h3>
-            <span className="text-[10px] text-zinc-500">Local preview</span>
+            <span className="text-[10px] text-zinc-500">poll_totals · edge cache</span>
           </div>
-          <p className="mb-3 text-sm text-zinc-300">Who wins Map 3?</p>
+          <p className="mb-3 text-sm text-zinc-300">{question}</p>
+
+          {isLoading && (
+            <p className="text-xs text-zinc-500">Loading poll totals…</p>
+          )}
+          {loadError && (
+            <p className="mb-2 text-xs text-red-400">{loadError}</p>
+          )}
+          {voteError && (
+            <p className="mb-2 text-xs text-amber-400">{voteError}</p>
+          )}
+
           <div className="space-y-2">
             {poll.map((option) => {
               const pct = totalVotes
                 ? Math.round((option.votes / totalVotes) * 100)
                 : 0;
-              const selected = votedFor === option.id;
+              const selected = votedFor === option.optionKey;
 
               return (
                 <button
-                  key={option.id}
+                  key={option.optionKey}
                   type="button"
-                  disabled={Boolean(votedFor)}
-                  onClick={() => handleVote(option.id)}
+                  disabled={Boolean(votedFor) || isLoading || isPending}
+                  onClick={() => handleVote(option.optionKey)}
                   className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                     selected
                       ? "border-violet-500/50 bg-violet-500/10"
@@ -74,7 +160,9 @@ export function SocialPanel() {
                 >
                   <div className="mb-1 flex items-center justify-between text-sm">
                     <span className="text-zinc-200">{option.label}</span>
-                    <span className="font-mono text-xs text-zinc-400">{pct}%</span>
+                    <span className="font-mono text-xs text-zinc-400">
+                      {pct}% · {option.votes}
+                    </span>
                   </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-zinc-800">
                     <div
@@ -87,8 +175,10 @@ export function SocialPanel() {
             })}
           </div>
           <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-            Aurora DSQL sharded counters will replace this local state in a later
-            step.
+            Writes hit sharded counters; a Lambda refreshes{" "}
+            <code className="text-zinc-400">poll_totals</code> every minute. This
+            panel polls the edge-cached <code className="text-zinc-400">/api/polls</code>{" "}
+            route every {POLL_REFRESH_MS / 1000}s.
           </p>
         </section>
 

@@ -1,0 +1,19 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["dsql:DbConnectAdmin"],
+      "Resource": "arn:aws:dsql:us-east-2:581351185959:cluster/bbt3ywfpckyeao5op4g2dkgoti"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:us-east-2:581351185959:*"
+    }
+  ]
+}

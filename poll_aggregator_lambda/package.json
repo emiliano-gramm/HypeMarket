@@ -1,0 +1,10 @@
+{
+  "name": "poll-aggregator-lambda",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@aws-sdk/dsql-signer": "^3.1075.0",
+    "pg": "^8.22.0"
+  }
+}
