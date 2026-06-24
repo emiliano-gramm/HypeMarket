@@ -26,6 +26,9 @@ build/
 telemetry_fanout_lambda.zip
 poll_aggregator_lambda.zip
 
+# v0 export bundle (temporary scaffold; merge into components/dashboard/ then discard)
+v01-uge-emiliano/components/v0_dashboard/
+
 # load test outputs and dependencies
 load-tests/results/
 load-tests/mqtt/node_modules/

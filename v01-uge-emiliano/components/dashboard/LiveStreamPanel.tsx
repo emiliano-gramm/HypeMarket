@@ -1,56 +1,63 @@
 "use client";
 
-const STREAM_EMBED_URL = process.env.NEXT_PUBLIC_STREAM_EMBED_URL;
+import { motion } from "framer-motion";
+import { Play, Signal } from "lucide-react";
 
 interface LiveStreamPanelProps {
   matchId: string;
+  streamEmbedUrl?: string;
 }
 
-export function LiveStreamPanel({ matchId }: LiveStreamPanelProps) {
+export function LiveStreamPanel({ matchId, streamEmbedUrl }: LiveStreamPanelProps) {
   return (
-    <section className="flex min-h-[220px] flex-1 flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-      <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-zinc-500">
-            Live Broadcast
-          </p>
-          <h2 className="text-sm font-semibold text-zinc-100">Match {matchId}</h2>
+    <section className="overflow-hidden rounded-xl border border-edge bg-panel">
+      <div className="flex items-center justify-between border-b border-edge px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Signal className="h-4 w-4 text-brand-strong" />
+          <h2 className="text-sm font-semibold tracking-wide text-ink">Live Stream</h2>
+          <span className="font-mono text-[11px] text-ink-faint">{matchId}</span>
         </div>
-        <span className="rounded-full border border-red-500/30 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-300">
-          Live
-        </span>
-      </header>
+        <div className="flex items-center gap-1.5 rounded-md border border-red-500/30 bg-red-500/15 px-2 py-1">
+          <motion.span
+            className="h-2 w-2 rounded-full bg-red-500"
+            animate={{ opacity: [1, 0.3, 1] }}
+            transition={{ duration: 1.2, repeat: Number.POSITIVE_INFINITY }}
+          />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-red-500">Live</span>
+        </div>
+      </div>
 
-      <div className="relative flex flex-1 items-center justify-center bg-black">
-        {STREAM_EMBED_URL ? (
+      <div className="relative aspect-video w-full bg-arena">
+        {streamEmbedUrl ? (
           <iframe
-            src={STREAM_EMBED_URL}
-            title={`Live stream for match ${matchId}`}
+            src={streamEmbedUrl}
+            title={`Live stream for ${matchId}`}
             className="absolute inset-0 h-full w-full"
-            allow="autoplay; encrypted-media; picture-in-picture"
+            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
             allowFullScreen
           />
         ) : (
-          <div className="flex max-w-sm flex-col items-center gap-3 px-6 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900">
-              <span className="text-xl">▶</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
+            <div className="glow-brand pointer-events-none absolute inset-0 opacity-60" />
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="relative flex h-16 w-16 items-center justify-center rounded-full border border-brand/40 bg-brand/15 text-brand-strong backdrop-blur-sm"
+              aria-label="Play stream preview"
+            >
+              <Play className="h-7 w-7 translate-x-0.5 fill-current" />
+            </motion.button>
+            <div className="relative px-4 text-center">
+              <p className="text-sm font-medium text-zinc-200">Stream preview</p>
+              <p className="mt-1 max-w-xs text-pretty text-xs text-zinc-400">
+                Set{" "}
+                <span className="font-mono text-zinc-300">NEXT_PUBLIC_STREAM_EMBED_URL</span> to
+                render a Twitch, YouTube, or Amazon IVS feed here.
+              </p>
             </div>
-            <p className="text-sm font-medium text-zinc-200">Stream placeholder</p>
-            <p className="text-xs leading-relaxed text-zinc-500">
-              Set{" "}
-              <code className="rounded bg-zinc-900 px-1 py-0.5 text-zinc-300">
-                NEXT_PUBLIC_STREAM_EMBED_URL
-              </code>{" "}
-              to your Twitch, YouTube, or Amazon IVS embed URL.
-            </p>
           </div>
         )}
-
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-4 py-3">
-          <p className="text-xs text-zinc-400">
-            Primary feed · synchronized with telemetry panel
-          </p>
-        </div>
       </div>
     </section>
   );

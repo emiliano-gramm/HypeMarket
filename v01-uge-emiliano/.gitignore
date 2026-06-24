@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 .env.local
 
+# v0 export bundle (temporary; not part of the main app)
+/components/v0_dashboard/
+
 # vercel
 .vercel
 

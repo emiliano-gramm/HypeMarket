@@ -1,27 +1,19 @@
-import type { TelemetryAction, TelemetryEvent } from "@/lib/telemetry/types";
-import { eventTimestamp } from "@/lib/telemetry/types";
+"use client";
 
-const ACTION_STYLES: Record<
-  TelemetryAction,
-  { badge: string; dot: string }
-> = {
-  Kill: {
-    badge: "border-red-500/40 bg-red-500/10 text-red-300",
-    dot: "bg-red-400",
-  },
-  Assist: {
-    badge: "border-sky-500/40 bg-sky-500/10 text-sky-300",
-    dot: "bg-sky-400",
-  },
-  Objective: {
-    badge: "border-amber-500/40 bg-amber-500/10 text-amber-300",
-    dot: "bg-amber-400",
-  },
-  Movement: {
-    badge: "border-zinc-500/40 bg-zinc-500/10 text-zinc-300",
-    dot: "bg-zinc-400",
-  },
-};
+import { AnimatePresence, motion } from "framer-motion";
+import { ListOrdered } from "lucide-react";
+import {
+  actionStyle,
+  eventTimestamp,
+  playerColor,
+  type TelemetryEvent,
+} from "@/lib/telemetry/types";
+
+interface TelemetryFeedProps {
+  events: TelemetryEvent[];
+  activePlayer: string | null;
+  onActivePlayer: (playerId: string | null) => void;
+}
 
 function formatTime(ts: number) {
   return new Date(ts).toLocaleTimeString(undefined, {
@@ -31,56 +23,70 @@ function formatTime(ts: number) {
   });
 }
 
-interface TelemetryFeedProps {
-  events: TelemetryEvent[];
-}
-
-export function TelemetryFeed({ events }: TelemetryFeedProps) {
-  if (events.length === 0) {
-    return (
-      <div className="flex h-full min-h-[180px] items-center justify-center rounded-lg border border-dashed border-zinc-800 bg-zinc-950/50 px-4 text-center">
-        <p className="text-sm text-zinc-500">
-          Waiting for telemetry… Run{" "}
-          <code className="text-zinc-300">node producer.js</code> to start the
-          feed.
-        </p>
-      </div>
-    );
-  }
-
+export function TelemetryFeed({ events, activePlayer, onActivePlayer }: TelemetryFeedProps) {
+  // useTelemetryStream already stores events newest-first.
   return (
-    <ul className="flex max-h-[280px] flex-col gap-2 overflow-y-auto pr-1">
-      {events.map((event) => {
-        const style = ACTION_STYLES[event.Action];
-        const ts = eventTimestamp(event);
+    <div className="flex flex-col rounded-lg border border-edge bg-panel-2">
+      <div className="flex items-center gap-2 border-b border-edge px-3 py-2">
+        <ListOrdered className="h-3.5 w-3.5 text-brand-strong" />
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-ink-muted">Event Feed</h3>
+        <span className="ml-auto font-mono text-[10px] text-ink-faint">{events.length} events</span>
+      </div>
 
-        return (
-          <li
-            key={event.SK}
-            className="grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-3 py-2"
-          >
-            <span className={`h-2 w-2 rounded-full ${style.dot}`} />
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs text-zinc-200">
-                  {event.PlayerId}
-                </span>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${style.badge}`}
-                >
-                  {event.Action}
-                </span>
-              </div>
-              <p className="mt-0.5 font-mono text-[11px] text-zinc-500">
-                ({event.CoordinateX.toFixed(1)}, {event.CoordinateY.toFixed(1)})
-              </p>
-            </div>
-            <time className="font-mono text-[10px] text-zinc-500">
-              {formatTime(ts)}
-            </time>
-          </li>
-        );
-      })}
-    </ul>
+      <div className="max-h-[280px] min-h-[180px] overflow-y-auto p-2">
+        {events.length === 0 ? (
+          <div className="flex h-[160px] items-center justify-center">
+            <span className="text-xs text-ink-faint">No events yet</span>
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-1.5" onMouseLeave={() => onActivePlayer(null)}>
+            <AnimatePresence initial={false}>
+              {events.map((e) => {
+                const s = actionStyle(e.Action);
+                const isActive = activePlayer === e.PlayerId;
+                const isDimmed = activePlayer !== null && !isActive;
+                return (
+                  <motion.li
+                    key={e.SK}
+                    layout
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: isDimmed ? 0.4 : 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    onMouseEnter={() => onActivePlayer(e.PlayerId)}
+                    className={`flex cursor-pointer items-center gap-2.5 rounded-md border px-2.5 py-2 transition-colors ${
+                      isActive
+                        ? "border-brand/50 bg-brand/10"
+                        : "border-edge bg-panel/40 hover:border-brand/30"
+                    }`}
+                  >
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: playerColor(e.PlayerId) }}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-xs font-medium text-ink">{e.PlayerId}</span>
+                        <span
+                          className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${s.badge}`}
+                        >
+                          {s.label}
+                        </span>
+                      </div>
+                      <span className="font-mono text-[10px] text-ink-faint">
+                        x:{e.CoordinateX.toFixed(1)} y:{e.CoordinateY.toFixed(1)}
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-mono text-[10px] text-ink-faint">
+                      {formatTime(eventTimestamp(e))}
+                    </span>
+                  </motion.li>
+                );
+              })}
+            </AnimatePresence>
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
