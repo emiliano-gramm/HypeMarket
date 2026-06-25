@@ -54,13 +54,16 @@ function StreamSkeleton() {
 }
 
 export function Dashboard() {
-  const { events, status, error, matchId, topic } = useTelemetryStream();
+  const { events, status, error, reconnectAttempt, matchId, topic } =
+    useTelemetryStream();
   const [activePlayer, setActivePlayer] = useState<string | null>(null);
 
   const hasEvents = events.length > 0;
   // Show skeletons while we are still establishing the stream and nothing has
   // arrived yet; once real telemetry flows we always render the live panels.
-  const showSkeleton = !hasEvents && (status === "idle" || status === "connecting");
+  const showSkeleton =
+    !hasEvents &&
+    (status === "idle" || status === "connecting" || status === "reconnecting");
 
   const { kills, objectives } = useMemo(
     () => ({
@@ -90,7 +93,12 @@ export function Dashboard() {
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <ThemeSwitcher />
-            <ConnectionBadge status={status} topic={topic} error={error} />
+            <ConnectionBadge
+              status={status}
+              topic={topic}
+              error={error}
+              reconnectAttempt={reconnectAttempt}
+            />
           </div>
         </header>
 
@@ -128,6 +136,28 @@ export function Dashboard() {
               </div>
 
               <div className="p-4">
+                {(status === "reconnecting" || status === "disconnected") && hasEvents && (
+                  <p
+                    className={`mb-3 flex items-center gap-1.5 rounded-md border px-3 py-2 text-xs ${
+                      status === "disconnected"
+                        ? "border-edge bg-panel-2 text-ink-muted"
+                        : "border-amber-500/30 bg-amber-500/10 text-amber-500"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-1.5 w-1.5 rounded-full ${
+                        status === "disconnected"
+                          ? "bg-ink-faint"
+                          : "animate-pulse bg-amber-400"
+                      }`}
+                    />
+                    {status === "disconnected"
+                      ? error ?? "Telemetry stream offline"
+                      : `Telemetry stream interrupted — reconnecting with backoff${
+                          reconnectAttempt > 0 ? ` (attempt ${reconnectAttempt})` : ""
+                        }`}
+                  </p>
+                )}
                 {showSkeleton ? (
                   <TelemetrySkeleton />
                 ) : hasEvents ? (

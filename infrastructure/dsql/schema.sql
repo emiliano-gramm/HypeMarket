@@ -101,3 +101,71 @@ CREATE TABLE IF NOT EXISTS uge.poll_totals (
 
 CREATE INDEX ASYNC IF NOT EXISTS idx_poll_totals_poll_id
     ON uge.poll_totals (poll_id);
+
+-- ===========================================================================
+-- HypeMarket extension — live esports prediction markets (play money)
+-- Additive migration: reuses polls/poll_options/vote_shards/vote_events/
+-- poll_totals as markets/outcomes/stake_shards/stakes/market_pools, and adds
+-- wallets + an append-only ledger. Existing poll code keeps working; new
+-- columns carry sane defaults. See .project_utils/updated_idea.md.
+-- ===========================================================================
+
+-- NOTE: Aurora DSQL does not support ADD COLUMN with NOT NULL/DEFAULT
+-- constraints, so new columns are added bare (nullable). Defaults are applied
+-- by seed.sql backfills and by COALESCE(...) in the application/query layer.
+
+-- Markets (reuses uge.polls). A market locks before the outcome is known and
+-- is then resolved to a winning outcome for parimutuel settlement.
+ALTER TABLE uge.polls ADD COLUMN IF NOT EXISTS market_type        VARCHAR(16);
+ALTER TABLE uge.polls ADD COLUMN IF NOT EXISTS locks_at           TIMESTAMPTZ;
+ALTER TABLE uge.polls ADD COLUMN IF NOT EXISTS resolved_option_id UUID;
+ALTER TABLE uge.polls ADD COLUMN IF NOT EXISTS resolved_at        TIMESTAMPTZ;
+
+-- Stake shards (reuses uge.vote_shards). staked_amount = sum of credits on this
+-- shard; vote_count is reused as the per-shard participant counter.
+ALTER TABLE uge.vote_shards ADD COLUMN IF NOT EXISTS staked_amount BIGINT;
+
+-- Stakes ledger (reuses uge.vote_events). Append-only; multiple stakes per
+-- viewer are now allowed, so the one-vote-per-viewer unique index is dropped.
+-- placeStake always writes amount + settled; legacy rows stay NULL and are
+-- excluded from settlement via amount > 0 / COALESCE(settled,false).
+ALTER TABLE uge.vote_events ADD COLUMN IF NOT EXISTS amount  BIGINT;
+ALTER TABLE uge.vote_events ADD COLUMN IF NOT EXISTS payout  BIGINT;
+ALTER TABLE uge.vote_events ADD COLUMN IF NOT EXISTS settled BOOLEAN;
+
+DROP INDEX IF EXISTS uge.idx_vote_events_one_per_viewer;
+
+-- Supports settlement scans: winning-outcome stakes that are not yet settled.
+CREATE INDEX ASYNC IF NOT EXISTS idx_vote_events_poll_option_settled
+    ON uge.vote_events (poll_id, option_id, settled);
+
+-- Market pools (reuses uge.poll_totals). staked_total drives implied odds;
+-- backer_count is the number of stakes backing the outcome.
+ALTER TABLE uge.poll_totals ADD COLUMN IF NOT EXISTS staked_total BIGINT;
+ALTER TABLE uge.poll_totals ADD COLUMN IF NOT EXISTS backer_count BIGINT;
+
+-- ---------------------------------------------------------------------------
+-- Viewer wallets — play-money "Hype Credits" balance (low-contention per row)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS uge.viewer_wallets (
+    external_id  VARCHAR(128) PRIMARY KEY,
+    balance      BIGINT NOT NULL DEFAULT 1000,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------------------
+-- Wallet ledger — append-only credit transactions (audit + provable balances)
+-- txn_type: 'grant' | 'stake' | 'payout'
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS uge.wallet_ledger (
+    ledger_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    external_id    VARCHAR(128) NOT NULL,
+    txn_type       VARCHAR(16)  NOT NULL,
+    amount         BIGINT       NOT NULL,
+    balance_after  BIGINT,
+    poll_id        UUID,
+    created_at     TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX ASYNC IF NOT EXISTS idx_wallet_ledger_external
+    ON uge.wallet_ledger (external_id, created_at);

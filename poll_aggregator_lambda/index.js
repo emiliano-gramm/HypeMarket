@@ -1,11 +1,17 @@
 const { DsqlSigner } = require("@aws-sdk/dsql-signer");
 const pg = require("pg");
 
+// Materializes both the poll totals (total_votes) and the HypeMarket pool
+// (staked_total / backer_count) from the shard rows in one pass. staked_amount
+// is added in Phase 0 (nullable) so COALESCE keeps legacy poll shards at 0.
 const AGGREGATE_SQL = `
-INSERT INTO uge.poll_totals (poll_id, option_id, total_votes, aggregated_at)
+INSERT INTO uge.poll_totals
+    (poll_id, option_id, total_votes, staked_total, backer_count, aggregated_at)
 SELECT
     vs.poll_id,
     vs.option_id,
+    SUM(vs.vote_count)::bigint,
+    SUM(COALESCE(vs.staked_amount, 0))::bigint,
     SUM(vs.vote_count)::bigint,
     CURRENT_TIMESTAMP
 FROM uge.vote_shards vs
@@ -13,6 +19,8 @@ GROUP BY vs.poll_id, vs.option_id
 ON CONFLICT (poll_id, option_id)
 DO UPDATE SET
     total_votes = EXCLUDED.total_votes,
+    staked_total = EXCLUDED.staked_total,
+    backer_count = EXCLUDED.backer_count,
     aggregated_at = EXCLUDED.aggregated_at
 `;
 
@@ -48,7 +56,11 @@ exports.handler = async () => {
   const result = await withDsqlClient(async (client) => {
     const update = await client.query(AGGREGATE_SQL);
     const totals = await client.query(
-      `SELECT o.option_key, pt.total_votes::bigint AS total_votes, pt.aggregated_at
+      `SELECT o.option_key,
+              pt.total_votes::bigint AS total_votes,
+              COALESCE(pt.staked_total, 0)::bigint AS staked_total,
+              COALESCE(pt.backer_count, 0)::bigint AS backer_count,
+              pt.aggregated_at
        FROM uge.poll_totals pt
        JOIN uge.poll_options o ON o.poll_id = pt.poll_id AND o.option_id = pt.option_id
        ORDER BY o.sort_order`

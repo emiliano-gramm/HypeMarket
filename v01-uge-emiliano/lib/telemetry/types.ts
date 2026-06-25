@@ -14,6 +14,7 @@ export type ConnectionStatus =
   | "idle"
   | "connecting"
   | "connected"
+  | "reconnecting"
   | "disconnected"
   | "error";
 

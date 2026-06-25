@@ -55,3 +55,45 @@ VALUES
     ('demo-viewer-1', 'NeoFan42'),
     ('demo-viewer-2', 'StratCaster')
 ON CONFLICT (external_id) DO NOTHING;
+
+-- ===========================================================================
+-- HypeMarket extension seed — turns the demo poll into a prediction market
+-- Safe to re-run. See .project_utils/updated_idea.md.
+-- ===========================================================================
+
+-- Promote the demo poll to a binary market and (re)set a generous lock window
+-- so staking is open during demos. Re-running just refreshes the lock time.
+UPDATE uge.polls
+SET market_type = 'binary',
+    locks_at    = CURRENT_TIMESTAMP + INTERVAL '6 hours',
+    resolved_option_id = NULL,
+    resolved_at = NULL,
+    status      = 'open'
+WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid;
+
+-- Backfill staked_amount to 0 on all shards (column is added nullable in DSQL).
+UPDATE uge.vote_shards
+SET staked_amount = 0
+WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid
+  AND staked_amount IS NULL;
+
+-- Seed a small house float (50 credits/outcome) on shard 0 so implied odds are
+-- defined before the first real stake. Shard sum stays the ground truth.
+UPDATE uge.vote_shards
+SET staked_amount = 50
+WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid
+  AND shard_id = 0;
+
+-- Bootstrap materialized pool totals to match the float (aggregator keeps them
+-- in sync afterwards). 50 credits, 0 real backers per outcome.
+UPDATE uge.poll_totals
+SET staked_total = 50,
+    backer_count = 0
+WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid;
+
+-- Demo wallets — 1000 Hype Credits each (play money, non-redeemable)
+INSERT INTO uge.viewer_wallets (external_id, balance)
+VALUES
+    ('demo-viewer-1', 1000),
+    ('demo-viewer-2', 1000)
+ON CONFLICT (external_id) DO NOTHING;

@@ -20,6 +20,7 @@ import { useViewerId } from "@/lib/viewer/useViewerId";
 
 const POLL_REFRESH_MS = 2000;
 const SYNCED_BANNER_MS = 2500;
+const VOTE_TIMEOUT_MS = 20_000;
 /** Keep bypassing CDN cache briefly after a vote so stale edge responses cannot regress totals. */
 const POST_VOTE_CACHE_BYPASS_MS = 30_000;
 
@@ -75,6 +76,25 @@ function clearConfirmedFloors(
     }
   }
   return next;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("Vote request timed out")),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 function PollSkeleton() {
@@ -326,7 +346,10 @@ export function SocialPanel() {
     );
 
     try {
-      const result = await castVote(optionKey, viewerId);
+      const result = await withTimeout(
+        castVote(optionKey, viewerId),
+        VOTE_TIMEOUT_MS
+      );
 
       if (!result.ok) {
         if (result.code === "already_voted") {
@@ -350,12 +373,16 @@ export function SocialPanel() {
       await refreshTotals(true);
       postVoteBypassUntilRef.current = Date.now() + POST_VOTE_CACHE_BYPASS_MS;
       markSynced();
-    } catch {
+    } catch (err) {
       delete optimisticFloorsRef.current[optionKey];
       postVoteBypassUntilRef.current = 0;
       setOptions(snapshot.options);
       setVotedFor(snapshot.votedFor);
-      setVoteError("Network error — vote not saved. Try again.");
+      setVoteError(
+        err instanceof Error && err.message === "Vote request timed out"
+          ? "Vote timed out — check your connection and try again."
+          : "Network error — vote not saved. Try again."
+      );
       setSyncStatus("error");
     }
   }
