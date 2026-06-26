@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { NO_FLASH_SCRIPT, ThemeProvider } from "@/components/theme-provider";
+import { Geist, Geist_Mono, Oxanium } from "next/font/google";
+import {
+  NO_FLASH_SCRIPT,
+  ThemeProvider,
+} from "@/components/hypemarket/theme-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,10 +16,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const oxanium = Oxanium({
+  variable: "--font-oxanium",
+  subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
+});
+
 export const metadata: Metadata = {
-  title: "UGE Live Command Center",
+  title: "HypeMarket · Live Esports Prediction Arena",
   description:
-    "Real-time esports telemetry dashboard with IoT streaming and live engagement.",
+    "Watch live, read the arena, and predict outcomes with play-money Hype Credits — a telemetry-synced parimutuel prediction market for esports.",
 };
 
 export default function RootLayout({
@@ -27,13 +36,15 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      data-skin="nebula"
+      data-mode="dark"
+      className={`${geistSans.variable} ${geistMono.variable} ${oxanium.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: NO_FLASH_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col bg-app font-sans antialiased">
+      <body className="min-h-full flex flex-col bg-app font-sans text-ink antialiased">
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

@@ -1,79 +1,230 @@
-@import "tailwindcss";
-
-@custom-variant dark (&:is(.dark *));
+@import 'tailwindcss';
 
 @theme inline {
-  --font-sans: var(--font-geist-sans), system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-oxanium), 'Geist Fallback';
+  --font-sans: var(--font-geist-sans), 'Geist Fallback';
+  --font-mono: var(--font-geist-mono), 'Geist Mono Fallback';
 
-  /* Command-center semantic colors (drive bg-app, border-edge, text-ink, etc.) */
+  /* Surfaces */
   --color-app: var(--app);
   --color-panel: var(--panel);
   --color-panel-2: var(--panel-2);
+  --color-arena: var(--arena);
   --color-edge: var(--edge);
+
+  /* Text */
   --color-ink: var(--ink);
   --color-ink-muted: var(--ink-muted);
   --color-ink-faint: var(--ink-faint);
+
+  /* Brand */
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
-  --color-arena: var(--arena);
+
+  /* Semantic accents */
+  --color-live: var(--live);
+  --color-gold: var(--gold);
+  --color-alpha: var(--alpha);
+  --color-beta: var(--beta);
+  --color-gain: var(--gain);
+  /* Alias kept for telemetry/market components that read --positive directly. */
   --color-positive: var(--positive);
+
+  --radius-xl: 0.875rem;
 }
 
-/* ===== Command Center theme tokens (mode x color-theme) ===== */
-/* Light defaults (nebula) */
+/* ----------------------------------------------------------------------------
+   THEME SYSTEM
+   The picker writes data-skin (nebula | aurora | ember | slate | neon) and
+   data-mode (dark | light) onto <html>. Each skin overrides the full token
+   set so surfaces, text, brand AND team/semantic colors all shift together
+   — not just the accent hue.
+
+   The request's token names map onto the tokens the components consume:
+     --team-alpha -> --alpha    --team-bravo -> --beta
+     --positive   -> --gain     --live-red   -> --live
+   These aliases are declared once here and resolve per-skin at use time.
+---------------------------------------------------------------------------- */
 :root {
+  --alpha: var(--team-alpha);
+  --beta: var(--team-bravo);
+  --gain: var(--positive);
+  --live: var(--live-red);
+}
+
+/* === Nebula — violet on near-black (default) ============================== */
+:root,
+[data-skin='nebula'] {
+  color-scheme: dark;
+  --app: #0a0710;
+  --panel: #14101e;
+  --panel-2: #1e172e;
+  --arena: #0c0814;
+  --edge: oklch(0.8 0.08 295 / 14%);
+  --ink: #f3f0fa;
+  --ink-muted: #a89fc0;
+  --ink-faint: #6b6385;
+  --brand: #8b5cf6;
+  --brand-strong: #a78bfa;
+  --gold: #f5b942;
+  --team-alpha: #818cf8;
+  --team-bravo: #f472b6;
+  --positive: #34d399;
+  --live-red: #f43f5e;
+}
+[data-skin='nebula'][data-mode='light'] {
   color-scheme: light;
-  --app: #f6f6f8;
+  --app: #f6f4fb;
   --panel: #ffffff;
-  --panel-2: #f0f0f3;
-  --edge: #e4e4e7;
-  --ink: #18181b;
-  --ink-muted: #52525b;
-  --ink-faint: #9b9ba3;
-  --arena: #101015;
+  --panel-2: #efeaf8;
+  --arena: #f1ecfa;
+  --edge: oklch(0.3 0.08 295 / 14%);
+  --ink: #1a1426;
+  --ink-muted: #5b5273;
+  --ink-faint: #8b82a3;
   --brand: #7c3aed;
   --brand-strong: #6d28d9;
-  --positive: #059669;
 }
 
-/* Dark (nebula) */
-.dark {
+/* === Aurora — teal on cool slate ========================================= */
+[data-skin='aurora'] {
   color-scheme: dark;
-  --app: #09090b;
-  --panel: #161619;
-  --panel-2: #0b0b0e;
-  --edge: #27272a;
-  --ink: #fafafa;
-  --ink-muted: #d4d4d8;
-  --ink-faint: #71717a;
-  --arena: #09090b;
-  --brand: #8b5cf6;
-  --brand-strong: #c4b5fd;
+  --app: #0b1418;
+  --panel: #0f1c24;
+  --panel-2: #162a34;
+  --arena: #0a161c;
+  --edge: oklch(0.8 0.06 200 / 16%);
+  --ink: #e6f1f4;
+  --ink-muted: #8fa9b2;
+  --ink-faint: #5a727b;
+  --brand: #2dd4bf;
+  --brand-strong: #5eead4;
+  --gold: #fbbf24;
+  --team-alpha: #22d3ee;
+  --team-bravo: #fbbf24;
   --positive: #34d399;
+  --live-red: #f87171;
 }
-
-/* Aurora (teal) */
-[data-theme="aurora"] {
+[data-skin='aurora'][data-mode='light'] {
+  color-scheme: light;
+  --app: #eef5f7;
+  --panel: #ffffff;
+  --panel-2: #e2eef1;
+  --arena: #e8f2f4;
+  --edge: oklch(0.3 0.06 200 / 16%);
+  --ink: #0c1c22;
+  --ink-muted: #4a626b;
+  --ink-faint: #7c949c;
   --brand: #0d9488;
   --brand-strong: #0f766e;
 }
-[data-theme="aurora"].dark {
-  --brand: #2dd4bf;
-  --brand-strong: #5eead4;
-}
 
-/* Ember (amber/orange) */
-[data-theme="ember"] {
+/* === Ember — orange on warm charcoal ===================================== */
+[data-skin='ember'] {
+  color-scheme: dark;
+  --app: #120d0a;
+  --panel: #1c1410;
+  --panel-2: #271a13;
+  --arena: #140e0a;
+  --edge: oklch(0.8 0.07 55 / 16%);
+  --ink: #f7efe8;
+  --ink-muted: #b6a394;
+  --ink-faint: #7a6757;
+  --brand: #f97316;
+  --brand-strong: #fb923c;
+  --gold: #facc15;
+  --team-alpha: #fb923c;
+  --team-bravo: #38bdf8;
+  --positive: #4ade80;
+  --live-red: #ef4444;
+}
+[data-skin='ember'][data-mode='light'] {
+  color-scheme: light;
+  --app: #faf5f0;
+  --panel: #ffffff;
+  --panel-2: #f3e9e0;
+  --arena: #f6ede4;
+  --edge: oklch(0.3 0.07 55 / 16%);
+  --ink: #241812;
+  --ink-muted: #6b5648;
+  --ink-faint: #9c8676;
   --brand: #ea580c;
   --brand-strong: #c2410c;
 }
-[data-theme="ember"].dark {
-  --brand: #fb923c;
-  --brand-strong: #fdba74;
+
+/* === Slate — YouTube-style neutral dark ================================== */
+[data-skin='slate'] {
+  color-scheme: dark;
+  --app: #0f0f0f;
+  --panel: #1c1c1c;
+  --panel-2: #272727;
+  --arena: #181818;
+  --edge: oklch(1 0 0 / 13%);
+  --ink: #f1f1f1;
+  --ink-muted: #aaaaaa;
+  --ink-faint: #717171;
+  --brand: #3ea6ff;
+  --brand-strong: #65b8ff;
+  --gold: #ffd23f;
+  --team-alpha: #3b82f6;
+  --team-bravo: #f97316;
+  --positive: #2ba640;
+  --live-red: #ff4e45;
+}
+[data-skin='slate'][data-mode='light'] {
+  color-scheme: light;
+  --app: #f9f9f9;
+  --panel: #ffffff;
+  --panel-2: #f0f0f0;
+  --arena: #f2f2f2;
+  --edge: oklch(0 0 0 / 13%);
+  --ink: #0f0f0f;
+  --ink-muted: #606060;
+  --ink-faint: #909090;
+  --brand: #065fd4;
+  --brand-strong: #0356c0;
 }
 
-/* Brand-tinted radial glow used behind the map + stream */
+/* === Neon — glassmorphism + electric green =============================== */
+[data-skin='neon'] {
+  color-scheme: dark;
+  --app: #04070a;
+  --panel: oklch(0.24 0.03 165 / 45%);
+  --panel-2: oklch(0.3 0.04 165 / 58%);
+  --arena: oklch(0.18 0.02 165 / 62%);
+  --edge: oklch(0.85 0.22 150 / 26%);
+  --ink: #eafff2;
+  --ink-muted: #9fc7b1;
+  --ink-faint: #5f8270;
+  --brand: #22ff88;
+  --brand-strong: #5dffa6;
+  --gold: #ffd23f;
+  --team-alpha: #22ffcc;
+  --team-bravo: #ff3d8b;
+  --positive: #22ff88;
+  --live-red: #ff3b5c;
+}
+[data-skin='neon'][data-mode='light'] {
+  color-scheme: light;
+  --app: #eafff5;
+  --panel: oklch(1 0 0 / 70%);
+  --panel-2: oklch(0.96 0.03 165 / 78%);
+  --arena: oklch(0.95 0.02 165 / 72%);
+  --edge: oklch(0.55 0.2 150 / 32%);
+  --ink: #042a18;
+  --ink-muted: #2f6b4d;
+  --ink-faint: #5f9277;
+  --brand: #059669;
+  --brand-strong: #047857;
+}
+/* Neon's translucent panels become real glass with a backdrop blur. */
+[data-skin='neon'] [class*='bg-panel'],
+[data-skin='neon'] [class*='bg-app'] {
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+/* Brand-tinted radial glow used behind the map + stream (telemetry panels). */
 @utility glow-brand {
   background-image: radial-gradient(
     circle at 50% 45%,
@@ -82,38 +233,69 @@
   );
 }
 
-/* "Carved in stone" skin applied to the poll when voting closes */
-@utility stone {
-  background-color: #6b7280;
-  background-image:
-    linear-gradient(150deg, #868d99 0%, #5b626b 55%, #474d55 100%),
-    repeating-linear-gradient(48deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 5px),
-    repeating-linear-gradient(-42deg, rgba(0, 0, 0, 0.07) 0 2px, transparent 2px 6px);
-  color: #f5f5f4;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.28),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.45),
-    0 1px 2px rgba(0, 0, 0, 0.4);
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
-}
-@utility stone-fill {
-  background-image:
-    linear-gradient(150deg, #5a6068 0%, #3c4148 100%),
-    repeating-linear-gradient(48deg, rgba(0, 0, 0, 0.12) 0 2px, transparent 2px 5px);
-  box-shadow: inset 0 -2px 4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-
 @layer base {
   * {
     border-color: var(--edge);
   }
   body {
-    background: var(--app);
+    background-color: var(--app);
     color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Smooth, calm cross-fade when the skin or light/dark mode changes. */
+  body,
+  [class*='bg-app'],
+  [class*='bg-panel'],
+  [class*='bg-arena'] {
+    transition:
+      background-color 280ms ease,
+      border-color 280ms ease,
+      color 280ms ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body,
+    [class*='bg-app'],
+    [class*='bg-panel'],
+    [class*='bg-arena'] {
+      transition: none;
+    }
+  }
+  html {
     font-family: var(--font-sans);
   }
-  * {
+  /* thin custom scrollbars for panels */
+  .scroll-thin {
     scrollbar-width: thin;
     scrollbar-color: var(--edge) transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background-color: var(--edge);
+    border-radius: 9999px;
+  }
+}
+
+/* Calm, continuous vertical auto-scroll for the arena event feed.
+   The track holds two copies of the list, so translating -50% loops seamlessly. */
+@keyframes arena-marquee {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+.arena-autoscroll {
+  animation: arena-marquee 26s linear infinite;
+}
+.arena-autoscroll:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .arena-autoscroll {
+    animation: none;
   }
 }
