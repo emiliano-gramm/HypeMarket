@@ -57,3 +57,43 @@ ORDER BY o.option_key;
 SELECT external_id, balance, updated_at
 FROM uge.viewer_wallets
 ORDER BY external_id;
+
+-- ===========================================================================
+-- HypeMarket Phase 3 — lock / resolve / settlement checks
+-- ===========================================================================
+
+-- Resolution state + winning outcome (resolved_at NULL until settlement runs)
+SELECT p.status,
+       p.resolved_at,
+       ro.option_key AS winning_option_key,
+       ro.label      AS winning_label
+FROM uge.polls p
+LEFT JOIN uge.poll_options ro ON ro.option_id = p.resolved_option_id
+WHERE p.poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid;
+
+-- Settlement summary per outcome: staked in, paid out, settled-stake count.
+-- After resolution every real stake (amount > 0) should be settled = true.
+SELECT o.option_key,
+       o.label,
+       COUNT(*) FILTER (WHERE ve.amount > 0)                          AS stakes,
+       COUNT(*) FILTER (WHERE ve.amount > 0 AND ve.settled)           AS settled_stakes,
+       COALESCE(SUM(ve.amount) FILTER (WHERE ve.amount > 0), 0)       AS staked_in,
+       COALESCE(SUM(ve.payout), 0)                                    AS paid_out
+FROM uge.poll_options o
+LEFT JOIN uge.vote_events ve
+  ON ve.poll_id = o.poll_id AND ve.option_id = o.option_id
+WHERE o.poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid
+GROUP BY o.option_key, o.label, o.sort_order
+ORDER BY o.sort_order;
+
+-- Ledger reconciliation: each wallet's balance must equal the running sum of
+-- its ledger amounts (grant + stakes (negative) + payouts). Any mismatch row
+-- signals a settlement bug.
+SELECT w.external_id,
+       w.balance,
+       COALESCE(SUM(l.amount), 0) AS ledger_sum,
+       w.balance - COALESCE(SUM(l.amount), 0) AS drift
+FROM uge.viewer_wallets w
+LEFT JOIN uge.wallet_ledger l ON l.external_id = w.external_id
+GROUP BY w.external_id, w.balance
+ORDER BY w.external_id;

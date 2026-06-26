@@ -77,3 +77,39 @@ export type GetWalletResult =
 export type GetViewerPositionsResult =
   | { ok: true; positions: ViewerPosition[] }
   | { ok: false; message: string };
+
+// --- Phase 3: lock / resolve / parimutuel settlement -----------------------
+
+export type AdminErrorCode =
+  | "unauthorized"
+  | "not_configured"
+  | "market_not_found"
+  | "invalid_option"
+  | "already_resolved"
+  | "error";
+
+/** Outcome of a parimutuel settlement run (idempotent). */
+export type SettlementSummary = {
+  marketId: string;
+  winningOptionKey: string;
+  winningLabel: string;
+  /** Ground-truth pools (sum of shard staked_amount) at resolution. */
+  winningPool: number;
+  totalPool: number;
+  /** Distinct winning viewers credited in this run. */
+  winnersPaid: number;
+  /** Stakes marked settled in this run (winners + losers). */
+  stakesSettled: number;
+  /** Total Hype Credits paid out in this run. */
+  creditsPaidOut: number;
+  /** True when the market was already resolved before this call (no double pay). */
+  alreadyResolved: boolean;
+};
+
+export type ResolveResult =
+  | { ok: true; summary: SettlementSummary }
+  | { ok: false; code: AdminErrorCode; message: string };
+
+export type LockResult =
+  | { ok: true; status: MarketStatus }
+  | { ok: false; code: AdminErrorCode; message: string };

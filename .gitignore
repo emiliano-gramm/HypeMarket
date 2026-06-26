@@ -26,8 +26,9 @@ build/
 telemetry_fanout_lambda.zip
 poll_aggregator_lambda.zip
 
-# v0 export bundle (temporary scaffold; merge into components/dashboard/ then discard)
+# v0 export bundles (temporary scaffold; merge into components/dashboard/ then discard)
 v01-uge-emiliano/components/v0_dashboard/
+v01-uge-emiliano/components/esports-prediction-panel/
 
 # load test outputs and dependencies
 load-tests/results/

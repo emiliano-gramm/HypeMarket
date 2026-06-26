@@ -198,6 +198,7 @@ export function MarketPanel() {
   const stakeFloorsRef = useRef<Record<string, number>>({});
   const postStakeBypassUntilRef = useRef(0);
   const syncedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevStatusRef = useRef<MarketStatus>(DEFAULT_META.status);
 
   const applyServerState = useCallback((state: MarketState) => {
     setMeta({
@@ -285,6 +286,21 @@ export function MarketPanel() {
       if (syncedTimerRef.current) clearTimeout(syncedTimerRef.current);
     };
   }, []);
+
+  // When the market transitions to resolved (admin settlement ran), pull the
+  // settled wallet balance + per-stake payouts so the banner/positions update
+  // without a manual refresh.
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = meta.status;
+    if (meta.status === "resolved" && prev !== "resolved" && viewerId) {
+      void (async () => {
+        const walletResult = await getWallet(viewerId);
+        if (walletResult.ok) setWallet(walletResult.wallet);
+        await refreshPositions();
+      })();
+    }
+  }, [meta.status, viewerId, refreshPositions]);
 
   const markSynced = useCallback(() => {
     setSyncStatus("synced");
