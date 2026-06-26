@@ -4,10 +4,12 @@ import { Activity, Crosshair, Flag, Trophy } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ConnectionBadge } from "@/components/dashboard/ConnectionBadge";
 import { LiveStreamPanel } from "@/components/dashboard/LiveStreamPanel";
-import { SocialPanel } from "@/components/dashboard/SocialPanel";
+import { MarketPanel } from "@/components/dashboard/MarketPanel";
+import { MomentumMeter } from "@/components/dashboard/market/MomentumMeter";
 import { TelemetryFeed } from "@/components/dashboard/TelemetryFeed";
 import { TelemetryMap } from "@/components/dashboard/TelemetryMap";
 import { ThemeSwitcher } from "@/components/dashboard/ThemeSwitcher";
+import { computeMomentumBreakdown } from "@/lib/telemetry/momentum";
 import { useTelemetryStream } from "@/lib/telemetry/useTelemetryStream";
 
 const STREAM_EMBED_URL = process.env.NEXT_PUBLIC_STREAM_EMBED_URL;
@@ -70,6 +72,12 @@ export function Dashboard() {
       kills: events.filter((e) => e.Action === "Kill").length,
       objectives: events.filter((e) => e.Action === "Objective").length,
     }),
+    [events]
+  );
+
+  // Telemetry-derived match momentum (separate signal from crowd-implied odds).
+  const { momentum, alphaScore, bravoScore } = useMemo(
+    () => computeMomentumBreakdown(events),
     [events]
   );
 
@@ -161,17 +169,26 @@ export function Dashboard() {
                 {showSkeleton ? (
                   <TelemetrySkeleton />
                 ) : hasEvents ? (
-                  <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                    <TelemetryMap
-                      events={events}
-                      activePlayer={activePlayer}
-                      onActivePlayer={setActivePlayer}
+                  <div className="flex flex-col gap-4">
+                    <MomentumMeter
+                      momentum={momentum}
+                      teamAlpha="Team Alpha"
+                      teamBravo="Team Bravo"
+                      alphaScore={alphaScore}
+                      bravoScore={bravoScore}
                     />
-                    <TelemetryFeed
-                      events={events}
-                      activePlayer={activePlayer}
-                      onActivePlayer={setActivePlayer}
-                    />
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <TelemetryMap
+                        events={events}
+                        activePlayer={activePlayer}
+                        onActivePlayer={setActivePlayer}
+                      />
+                      <TelemetryFeed
+                        events={events}
+                        activePlayer={activePlayer}
+                        onActivePlayer={setActivePlayer}
+                      />
+                    </div>
                   </div>
                 ) : (
                   <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-edge">
@@ -187,7 +204,7 @@ export function Dashboard() {
           </div>
 
           {/* RIGHT COLUMN */}
-          <SocialPanel />
+          <MarketPanel />
         </div>
       </div>
     </div>

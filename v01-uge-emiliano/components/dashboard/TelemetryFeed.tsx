@@ -5,9 +5,13 @@ import { ListOrdered } from "lucide-react";
 import {
   actionStyle,
   eventTimestamp,
-  playerColor,
   type TelemetryEvent,
 } from "@/lib/telemetry/types";
+import {
+  playerTeam,
+  TEAM_COLORS,
+  teamLabel,
+} from "@/lib/telemetry/momentum";
 
 interface TelemetryFeedProps {
   events: TelemetryEvent[];
@@ -43,6 +47,8 @@ export function TelemetryFeed({ events, activePlayer, onActivePlayer }: Telemetr
             <AnimatePresence initial={false}>
               {events.map((e) => {
                 const s = actionStyle(e.Action);
+                const team = playerTeam(e.PlayerId);
+                const color = TEAM_COLORS[team].dot;
                 const isActive = activePlayer === e.PlayerId;
                 const isDimmed = activePlayer !== null && !isActive;
                 return (
@@ -62,11 +68,16 @@ export function TelemetryFeed({ events, activePlayer, onActivePlayer }: Telemetr
                   >
                     <span
                       className="h-2 w-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: playerColor(e.PlayerId) }}
+                      style={{ backgroundColor: color }}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate text-xs font-medium text-ink">{e.PlayerId}</span>
+                        <span
+                          className={`rounded border px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${TEAM_COLORS[team].badge}`}
+                        >
+                          {teamLabel(team)}
+                        </span>
                         <span
                           className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${s.badge}`}
                         >

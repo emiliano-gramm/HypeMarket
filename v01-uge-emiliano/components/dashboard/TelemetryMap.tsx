@@ -3,7 +3,12 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Crosshair } from "lucide-react";
 import { memo, useMemo } from "react";
-import { actionStyle, playerColor, type TelemetryEvent } from "@/lib/telemetry/types";
+import { actionStyle, type TelemetryEvent } from "@/lib/telemetry/types";
+import {
+  playerTeam,
+  TEAM_COLORS,
+  teamLabel,
+} from "@/lib/telemetry/momentum";
 
 interface TelemetryMapProps {
   events: TelemetryEvent[];
@@ -38,7 +43,9 @@ const PlayerDot = memo(function PlayerDot({
   onActivePlayer: (playerId: string | null) => void;
 }) {
   const s = actionStyle(dot.latest.Action);
-  const color = playerColor(dot.playerId);
+  const team = playerTeam(dot.playerId);
+  const color = TEAM_COLORS[team].dot;
+  const teamName = teamLabel(team);
 
   return (
     <motion.div
@@ -87,6 +94,11 @@ const PlayerDot = memo(function PlayerDot({
             <div className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
               <span className="text-xs font-semibold text-ink">{dot.playerId}</span>
+              <span
+                className={`rounded border px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${TEAM_COLORS[team].badge}`}
+              >
+                {teamName}
+              </span>
             </div>
             <div className="mt-1 flex items-center gap-1.5">
               <span
