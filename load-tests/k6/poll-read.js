@@ -1,6 +1,6 @@
 /**
- * k6 — edge-cached poll read path (GET /api/polls).
- * Mirrors SocialPanel polling every 2 seconds.
+ * k6 — edge-cached market read path (GET /api/markets).
+ * Mirrors useMarket() polling every 2 seconds.
  *
  * Run: ./load-tests/scripts/run-smoke.sh poll-read
  */
@@ -9,7 +9,7 @@ import { check, sleep } from "k6";
 import {
   BASE_URL,
   POLL_REFRESH_SECONDS,
-  cloudDistribution,
+  buildK6CloudOptions,
   defaultThresholds,
   hasEdgeCacheHeaders,
   pollReadScenario,
@@ -22,15 +22,13 @@ export const options = {
     poll_read: pollReadScenario(),
   },
   thresholds: defaultThresholds,
-  tags: { test: "poll-read", profile },
-  ...(profile === "cloud"
-    ? { cloud: { distribution: cloudDistribution, projectID: __ENV.K6_CLOUD_PROJECT_ID } }
-    : {}),
+  tags: { test: "market-read", profile },
+  ...buildK6CloudOptions(),
 };
 
 export default function pollRead() {
-  const res = http.get(`${BASE_URL}/api/polls`, {
-    tags: { name: "GET /api/polls" },
+  const res = http.get(`${BASE_URL}/api/markets`, {
+    tags: { name: "GET /api/markets" },
   });
 
   check(res, {
@@ -42,10 +40,10 @@ export default function pollRead() {
         return false;
       }
     },
-    "has poll options": (r) => {
+    "has market outcomes": (r) => {
       try {
-        const options = r.json("state.options");
-        return Array.isArray(options) && options.length >= 2;
+        const outcomes = r.json("state.outcomes");
+        return Array.isArray(outcomes) && outcomes.length >= 2;
       } catch {
         return false;
       }

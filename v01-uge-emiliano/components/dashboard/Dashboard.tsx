@@ -94,8 +94,8 @@ export function Dashboard() {
   const hasEvents = events.length > 0;
 
   const { momentum } = useMemo(
-    () => computeMomentumBreakdown(events),
-    [events]
+    () => computeMomentumBreakdown(events, now),
+    [events, now]
   );
   const alphaShare = (momentum + 1) / 2;
 
@@ -197,7 +197,6 @@ export function Dashboard() {
             <div className={mobileTab === "arena" ? "hidden lg:block" : "block"}>
               <StreamTheater
                 title={`Live Match · ${matchId}`}
-                streamer="Ultimate Global Entertainment"
                 embedUrl={STREAM_EMBED_URL}
               />
               <div className="mt-2">
@@ -224,6 +223,7 @@ export function Dashboard() {
                     events={events}
                     activePlayer={activePlayer}
                     onActivePlayer={setActivePlayer}
+                    now={now}
                   />
                 }
               />
@@ -276,9 +276,6 @@ export function Dashboard() {
               <ActivityFeed items={activityItems} />
 
               <p className="text-[10px] leading-relaxed text-ink-faint">
-                Stakes hit sharded counters; a Lambda materializes{" "}
-                <code className="text-ink-muted">staked_total</code>, read from the
-                edge-cached <code className="text-ink-muted">/api/markets</code> route.
                 Odds are crowd-implied (parimutuel) — telemetry only moves the
                 momentum strip.
               </p>

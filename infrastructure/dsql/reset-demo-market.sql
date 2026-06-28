@@ -1,14 +1,21 @@
--- Reset the demo HypeMarket poll to a clean 50/50 baseline (house float on shard 0).
--- Destructive for poll a1000001-0000-4000-8000-000000000001 only:
---   • clears stake history (vote_events with amount > 0)
---   • zeroes shard counters, re-applies 50-credit float per outcome on shard 0
---   • syncs poll_totals immediately (no need to wait for the aggregator Lambda)
---   • reopens the market (clears lock + resolution)
--- Does NOT reset viewer wallets or social poll votes (amount IS NULL).
--- Safe to re-run.
+-- Reset demo HypeMarket to a clean 50/50 baseline (house float on shard 0).
+--
+-- ⚠️  Do NOT run this file directly with psql after large load tests — Aurora DSQL
+-- rejects single-transaction DELETEs that touch too many rows ("transaction row
+-- limit exceeded"). Use the batched runner instead:
+--
+--   ./infrastructure/dsql/reset-demo-market.sh
+--   (always uses reset-demo-market.mjs)
+--
+-- What a full reset clears (demo poll a1000001-0000-4000-8000-000000000001):
+--   • all vote_events for the demo market (stakes + legacy poll rows)
+--   • k6 load-test viewers, wallets, and wallet_ledger rows (external_id LIKE 'k6%')
+--   • demo-viewer-1/2 ledger history; balances restored to 1000 credits
+--   • shard counters + poll_totals synced to 50/50 opening pools; market reopened
+--
+-- The statements below are applied by reset-demo-market.mjs after batched deletes.
 
-BEGIN;
-
+-- Reopen market
 UPDATE uge.polls
 SET market_type = 'binary',
     locks_at = CURRENT_TIMESTAMP + INTERVAL '6 hours',
@@ -17,11 +24,7 @@ SET market_type = 'binary',
     status = 'open'
 WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid;
 
-DELETE FROM uge.vote_events
-WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid
-  AND amount IS NOT NULL
-  AND amount > 0;
-
+-- Zero shards, then re-apply 50-credit house float per outcome on shard 0
 UPDATE uge.vote_shards
 SET staked_amount = 0,
     vote_count = 0
@@ -35,12 +38,11 @@ WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid
 UPDATE uge.poll_totals
 SET staked_total = 50,
     backer_count = 0,
+    total_votes = 0,
     aggregated_at = CURRENT_TIMESTAMP
 WHERE poll_id = 'a1000001-0000-4000-8000-000000000001'::uuid;
 
-COMMIT;
-
--- Post-reset sanity (printed by reset-demo-market.sh)
+-- Post-reset sanity
 SELECT p.status,
        p.locks_at,
        p.resolved_option_id,

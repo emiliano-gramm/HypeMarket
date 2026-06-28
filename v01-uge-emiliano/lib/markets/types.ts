@@ -63,7 +63,7 @@ export type StakeErrorCode =
   | "error";
 
 export type StakeResult =
-  | { ok: true; wallet: Wallet }
+  | { ok: true; wallet: Wallet; /** OCC retries before commit (load-test visibility). */ occRetries?: number }
   | { ok: false; code: StakeErrorCode; message: string };
 
 export type GetMarketStateResult =

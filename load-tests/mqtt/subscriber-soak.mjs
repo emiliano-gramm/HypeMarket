@@ -7,8 +7,9 @@
  *   cd telemetry_mock_data && node producer.js
  *
  * Usage:
- *   node subscriber-soak.mjs --connections 50 --duration 60
+ *   node subscriber-soak.mjs --connections 50 --duration 60 [--output ../results/mqtt-soak-....json]
  */
+import { writeFileSync } from "node:fs";
 import { connectSubscriber, getMqttConfigFromEnv } from "./cognito-credentials.mjs";
 
 function parseArgs(argv) {
@@ -16,6 +17,7 @@ function parseArgs(argv) {
     connections: 25,
     durationSec: 60,
     rampMs: 100,
+    output: process.env.MQTT_SOAK_OUTPUT || "",
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -26,6 +28,8 @@ function parseArgs(argv) {
       options.durationSec = Number(argv[++i]);
     } else if (arg === "--ramp-ms" && argv[i + 1]) {
       options.rampMs = Number(argv[++i]);
+    } else if (arg === "--output" && argv[i + 1]) {
+      options.output = argv[++i];
     } else if (arg === "--help" || arg === "-h") {
       console.log(`Usage: node subscriber-soak.mjs [options]
 
@@ -33,6 +37,7 @@ Options:
   --connections <n>   Concurrent MQTT subscribers (default: 25)
   --duration <sec>    Soak duration in seconds (default: 60)
   --ramp-ms <ms>      Delay between connection spawns (default: 100)
+  --output <path>     Write JSON summary to this file (or set MQTT_SOAK_OUTPUT)
 
 Environment (from load-tests/.env or shell):
   AWS_IOT_ENDPOINT, COGNITO_IDENTITY_POOL_ID, AWS_REGION, TELEMETRY_TOPIC
@@ -77,7 +82,8 @@ async function spawnSubscriber(index, config) {
 }
 
 async function main() {
-  const { connections, durationSec, rampMs } = parseArgs(process.argv);
+  const { connections, durationSec, rampMs, output } = parseArgs(process.argv);
+  const startedAt = new Date().toISOString();
   const config = getMqttConfigFromEnv();
 
   console.log(
@@ -127,13 +133,25 @@ async function main() {
     await sub.subscriber.disconnect();
   }
 
+  const finishedAt = new Date().toISOString();
   const summary = {
+    test: "mqtt-soak",
     event: "mqtt_soak_complete",
+    startedAt,
+    finishedAt,
     connectionsRequested: connections,
     connectionsOk: connected.length,
     connectionsFailed: failed.length,
     durationSec,
+    rampMs,
+    topic: config.topic,
+    endpoint: config.endpoint,
+    region: config.region,
     totalMessagesReceived: totalMessages,
+    messagesPerSecond:
+      durationSec > 0
+        ? Number((totalMessages / durationSec).toFixed(2))
+        : 0,
     avgMessagesPerSubscriber:
       connected.length > 0
         ? Number((totalMessages / connected.length).toFixed(2))
@@ -152,6 +170,11 @@ async function main() {
   };
 
   console.log(JSON.stringify(summary, null, 2));
+
+  if (output) {
+    writeFileSync(output, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+    console.log(`Summary exported to ${output}`);
+  }
 }
 
 function percentile(values, p) {

@@ -5,6 +5,17 @@
 
 const profile = __ENV.K6_PROFILE || "smoke";
 
+/** Sustained operating-point knobs for K6_PROFILE=cloud-geo (override via env). */
+const geoStakeRate = Number(__ENV.GEO_STAKE_RATE || "45");
+const geoDuration = __ENV.GEO_DURATION || "5m";
+/** k6 Cloud free/trial stacks often cap at 100 VUs — keep combined scenarios under budget. */
+const geoVuBudget = Number(__ENV.GEO_VU_BUDGET || "100");
+const geoReaderVus = Number(__ENV.GEO_READER_VUS || "25");
+const geoStakeMaxVus = Number(
+  __ENV.GEO_STAKE_MAX_VUS || String(Math.max(geoVuBudget - geoReaderVus, geoStakeRate))
+);
+const geoStakePreAllocated = Math.min(Math.max(geoStakeRate, 20), geoStakeMaxVus);
+
 export const BASE_URL = (
   __ENV.BASE_URL || "https://ultimate-global-entertainment.vercel.app"
 ).replace(/\/$/, "");
@@ -12,6 +23,9 @@ export const BASE_URL = (
 export const LOAD_TEST_SECRET = __ENV.LOAD_TEST_SECRET || "";
 
 export const POLL_REFRESH_SECONDS = Number(__ENV.POLL_REFRESH_SECONDS || "2");
+
+/** Default stake chip amount — matches HypeMarket UI quick chips. */
+export const DEFAULT_STAKE_AMOUNT = Number(__ENV.DEFAULT_STAKE_AMOUNT || "50");
 
 const profiles = {
   smoke: {
@@ -136,6 +150,37 @@ const profiles = {
       },
     },
   },
+  /** k6 Cloud — honest operating point from US/EU/AP (Phase 5 geo proof). */
+  "cloud-geo": {
+    pollRead: {
+      executor: "constant-vus",
+      vus: geoReaderVus,
+      duration: geoDuration,
+    },
+    pollVote: {
+      executor: "constant-arrival-rate",
+      rate: geoStakeRate,
+      timeUnit: "1s",
+      duration: geoDuration,
+      preAllocatedVUs: geoStakePreAllocated,
+      maxVUs: geoStakeMaxVus,
+    },
+    combined: {
+      pollReaders: {
+        executor: "constant-vus",
+        vus: geoReaderVus,
+        duration: geoDuration,
+      },
+      pollVoters: {
+        executor: "constant-arrival-rate",
+        rate: geoStakeRate,
+        timeUnit: "1s",
+        duration: geoDuration,
+        preAllocatedVUs: geoStakePreAllocated,
+        maxVUs: geoStakeMaxVus,
+      },
+    },
+  },
 };
 
 const active = profiles[profile] || profiles.smoke;
@@ -161,12 +206,50 @@ export function combinedScenarios() {
   };
 }
 
-/** Geographic distribution for Grafana k6 Cloud (step 7 global load). */
-export const cloudDistribution = {
+/** Multi-region distribution (paid k6 Cloud plans — max 1 zone on Free Forever). */
+export const cloudDistributionMulti = {
   "amazon:us:ashburn": { loadZone: "amazon:us:ashburn", percent: 34 },
   "amazon:ie:dublin": { loadZone: "amazon:ie:dublin", percent: 33 },
-  "amazon:ap:singapore": { loadZone: "amazon:ap:singapore", percent: 33 },
+  "amazon:sg:singapore": { loadZone: "amazon:sg:singapore", percent: 33 },
 };
+
+/** @deprecated alias — use cloudDistributionMulti or resolveCloudDistribution() */
+export const cloudDistribution = cloudDistributionMulti;
+
+/** Pick load zones for k6 Cloud. Free Forever allows 1 zone; set GEO_MULTI_ZONE=true for 3. */
+export function resolveCloudDistribution(env = __ENV) {
+  const activeProfile = env.K6_PROFILE || "smoke";
+  const explicitZone = env.GEO_LOAD_ZONE;
+  if (explicitZone) {
+    return { [explicitZone]: { loadZone: explicitZone, percent: 100 } };
+  }
+  if (env.GEO_MULTI_ZONE === "1" || env.GEO_MULTI_ZONE === "true") {
+    return cloudDistributionMulti;
+  }
+  if (activeProfile === "cloud") {
+    return cloudDistributionMulti;
+  }
+  const defaultZone = env.GEO_DEFAULT_ZONE || "amazon:us:ashburn";
+  return { [defaultZone]: { loadZone: defaultZone, percent: 100 } };
+}
+
+/** True when the run should use k6 Cloud load zones (US/EU/AP). */
+export function isK6CloudProfile(name = profile) {
+  return name === "cloud" || name === "cloud-geo";
+}
+
+/** Spread options.cloud when profile is cloud or cloud-geo. */
+export function buildK6CloudOptions(env = __ENV) {
+  const activeProfile = env.K6_PROFILE || "smoke";
+  if (!isK6CloudProfile(activeProfile)) {
+    return {};
+  }
+  const cloud = { distribution: resolveCloudDistribution(env) };
+  if (env.K6_CLOUD_PROJECT_ID) {
+    cloud.projectID = env.K6_CLOUD_PROJECT_ID;
+  }
+  return { cloud };
+}
 
 export const defaultThresholds = {
   http_req_failed: ["rate<0.05"],
@@ -174,11 +257,36 @@ export const defaultThresholds = {
   checks: ["rate>0.95"],
 };
 
-export const voteThresholds = {
+export const stakeThresholds = {
   ...defaultThresholds,
-  vote_success_rate: ["rate>0.90"],
+  stake_success_rate: ["rate>0.90"],
   http_req_duration: ["p(95)<3000", "p(99)<8000"],
 };
+
+/** @deprecated Use stakeThresholds — kept for script compatibility during Phase 4. */
+export const voteThresholds = stakeThresholds;
+
+/** Thresholds for cloud-geo — allows cross-region RTT; expects ~99% stake success. */
+export const geoStakeThresholds = {
+  http_req_failed: ["rate<0.05"],
+  checks: ["rate>0.95"],
+  stake_success_rate: ["rate>0.95"],
+  http_req_duration: ["p(95)<5000", "p(99)<8000"],
+};
+
+export function combinedThresholds(name = profile) {
+  if (name === "cloud-geo") {
+    return { ...defaultThresholds, ...geoStakeThresholds };
+  }
+  return { ...defaultThresholds, ...stakeThresholds, stake_success_rate: ["rate>0.90"] };
+}
+
+export function stakeWriteThresholds(name = profile) {
+  if (name === "cloud-geo") {
+    return { ...geoStakeThresholds };
+  }
+  return { ...stakeThresholds, stake_success_rate: ["rate>0.90"] };
+}
 
 export function uniqueViewerId() {
   return `k6-${__VU}-${__ITER}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;

@@ -20,7 +20,7 @@ export function MomentumStrip({
   return (
     <div className="flex items-center gap-3 rounded-lg border border-edge bg-panel/60 px-3 py-2">
       <span className="hidden shrink-0 font-mono text-[10px] uppercase tracking-wider text-ink-faint sm:inline">
-        Telemetry · last 15s
+        Telemetry · last 5m
       </span>
       <div className="flex items-center gap-2">
         <span className="h-2 w-2 rounded-full bg-alpha" />

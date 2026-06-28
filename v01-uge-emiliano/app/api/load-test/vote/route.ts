@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
-import { castVote } from "@/app/actions/polls";
+import { placeStake } from "@/app/actions/markets";
+import type { StakeErrorCode } from "@/lib/markets/types";
 
 export const dynamic = "force-dynamic";
 
+const DEFAULT_STAKE_AMOUNT = 50;
+
+function stakeHttpStatus(code: StakeErrorCode): number {
+  switch (code) {
+    case "insufficient_funds":
+      return 402;
+    case "market_locked":
+    case "market_closed":
+      return 409;
+    case "error":
+      return 500;
+    default:
+      return 400;
+  }
+}
+
 /**
- * Guarded vote endpoint for k6 load tests (step 7).
+ * Guarded stake endpoint for k6 load tests (Phase 4).
  * Disabled unless LOAD_TEST_SECRET is set on the server.
  */
 export async function POST(request: Request) {
@@ -24,7 +41,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { optionKey?: string; viewerExternalId?: string };
+  let body: { optionKey?: string; viewerExternalId?: string; amount?: number };
   try {
     body = await request.json();
   } catch {
@@ -35,6 +52,9 @@ export async function POST(request: Request) {
   }
 
   const { optionKey, viewerExternalId } = body;
+  const amount =
+    body.amount === undefined ? DEFAULT_STAKE_AMOUNT : Number(body.amount);
+
   if (!optionKey || !viewerExternalId) {
     return NextResponse.json(
       { ok: false, message: "optionKey and viewerExternalId are required" },
@@ -42,12 +62,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await castVote(optionKey, viewerExternalId);
-  const status = result.ok
-    ? 200
-    : result.code === "already_voted"
-      ? 409
-      : 400;
+  const result = await placeStake(optionKey, amount, viewerExternalId);
+  const status = result.ok ? 200 : stakeHttpStatus(result.code);
 
   return NextResponse.json(result, { status });
 }

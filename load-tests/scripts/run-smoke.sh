@@ -16,6 +16,9 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LOAD_TESTS="$ROOT/load-tests"
 SCENARIO="${1:-combined}"
 
+# shellcheck disable=SC1091
+source "$LOAD_TESTS/scripts/lib/results.sh"
+
 if ! command -v k6 >/dev/null 2>&1; then
   echo "k6 is not installed. See https://grafana.com/docs/k6/latest/set-up/install-k6/"
   exit 1
@@ -30,8 +33,6 @@ fi
 
 export K6_PROFILE="${K6_PROFILE:-smoke}"
 export BASE_URL="${BASE_URL:-https://ultimate-global-entertainment.vercel.app}"
-
-mkdir -p "$LOAD_TESTS/results"
 
 case "$SCENARIO" in
   poll-read)
@@ -57,12 +58,14 @@ case "$SCENARIO" in
     ;;
 esac
 
-STAMP="$(date +%Y%m%d-%H%M%S)"
-OUT="$LOAD_TESTS/results/smoke-${SCENARIO}-${STAMP}.json"
+load_test_init_results "$LOAD_TESTS"
+load_test_set_paths "smoke-${SCENARIO}"
 
 echo "Running k6 smoke: $SCENARIO (profile=$K6_PROFILE, target=$BASE_URL)"
+set -o pipefail
 k6 run \
-  --summary-export="$OUT" \
-  "$SCRIPT"
+  --summary-export="$LOAD_TEST_JSON" \
+  "$SCRIPT" 2>&1 | tee "$LOAD_TEST_LOG"
 
-echo "Summary exported to $OUT"
+echo "Summary exported to $LOAD_TEST_JSON"
+echo "Full log saved to $LOAD_TEST_LOG"

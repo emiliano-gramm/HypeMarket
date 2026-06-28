@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ListOrdered } from "lucide-react";
 import {
@@ -8,6 +9,8 @@ import {
   type TelemetryEvent,
 } from "@/lib/telemetry/types";
 import {
+  computeEventWindowShare,
+  formatMomentumDelta,
   playerTeam,
   TEAM_COLORS,
   teamLabel,
@@ -17,6 +20,8 @@ interface TelemetryFeedProps {
   events: TelemetryEvent[];
   activePlayer: string | null;
   onActivePlayer: (playerId: string | null) => void;
+  /** Shared 1s clock — keeps feed % aligned with the momentum bar window. */
+  now: number;
 }
 
 function formatTime(ts: number) {
@@ -27,7 +32,16 @@ function formatTime(ts: number) {
   });
 }
 
-export function TelemetryFeed({ events, activePlayer, onActivePlayer }: TelemetryFeedProps) {
+export function TelemetryFeed({ events, activePlayer, onActivePlayer, now }: TelemetryFeedProps) {
+  const momentumShares = useMemo(() => {
+    const shares = new Map<string, number>();
+    for (const event of events) {
+      const share = computeEventWindowShare(event, events, now);
+      if (share !== null) shares.set(event.SK, share);
+    }
+    return shares;
+  }, [events, now]);
+
   // useTelemetryStream already stores events newest-first.
   return (
     <div className="flex flex-col rounded-lg border border-edge bg-panel-2">
@@ -50,6 +64,7 @@ export function TelemetryFeed({ events, activePlayer, onActivePlayer }: Telemetr
                 const s = actionStyle(e.Action);
                 const team = playerTeam(e.PlayerId);
                 const color = TEAM_COLORS[team].dot;
+                const momentumShare = momentumShares.get(e.SK);
                 const isActive = activePlayer === e.PlayerId;
                 const isDimmed = activePlayer !== null && !isActive;
                 return (
@@ -84,6 +99,20 @@ export function TelemetryFeed({ events, activePlayer, onActivePlayer }: Telemetr
                         >
                           {s.label}
                         </span>
+                        {momentumShare !== undefined && (
+                          <span
+                            className={`font-mono text-[9px] font-semibold tabular-nums ${
+                              momentumShare > 0
+                                ? "text-alpha"
+                                : momentumShare < 0
+                                  ? "text-beta"
+                                  : "text-ink-faint"
+                            }`}
+                            title="Share of the current 5-minute momentum window"
+                          >
+                            {formatMomentumDelta(momentumShare)}
+                          </span>
+                        )}
                       </div>
                       <span className="font-mono text-[10px] text-ink-faint">
                         x:{e.CoordinateX.toFixed(1)} y:{e.CoordinateY.toFixed(1)}

@@ -3,7 +3,7 @@
 # run-k6-cloud.sh — DISTRIBUTED global load test via Grafana k6 Cloud (~9 min)
 #
 # Usage: ./load-tests/scripts/run-k6-cloud.sh [poll-read|poll-vote|combined]
-# Requires: k6 login cloud
+# Requires: k6 cloud login
 #
 # ⚠️  WARNING — DO NOT run willy-nilly. Cloud profile ramps to thousands–10k VUs
 #   across US/EU/AP. This burns k6 Cloud VUh (virtual-user-hours) fast and can hit
@@ -19,6 +19,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LOAD_TESTS="$ROOT/load-tests"
 SCENARIO="${1:-combined}"
+
+# shellcheck disable=SC1091
+source "$LOAD_TESTS/scripts/lib/results.sh"
 
 if ! command -v k6 >/dev/null 2>&1; then
   echo "k6 is not installed."
@@ -57,9 +60,13 @@ case "$SCENARIO" in
     ;;
 esac
 
+load_test_init_results "$LOAD_TESTS"
+load_test_set_paths "cloud-${SCENARIO}"
+
 echo "Launching k6 Cloud run: $SCENARIO"
-echo "Geographic zones: us-east (Ashburn), eu-west (Dublin), ap-southeast (Singapore)"
+echo "Geographic zones: us-east (Ashburn), eu-west (Dublin), ap-southeast (Singapore — amazon:sg:singapore)"
 echo "Target: $BASE_URL"
+echo "Local summary will be saved to $LOAD_TEST_JSON"
 
 CLOUD_ARGS=()
 if [[ -n "${K6_CLOUD_PROJECT_ID:-}" ]]; then
@@ -67,10 +74,16 @@ if [[ -n "${K6_CLOUD_PROJECT_ID:-}" ]]; then
 fi
 
 # Pass secrets to k6 Cloud (encrypted in transit; not stored in script files)
+set -o pipefail
 k6 cloud run \
   "${CLOUD_ARGS[@]}" \
+  --summary-export="$LOAD_TEST_JSON" \
   -e "BASE_URL=${BASE_URL}" \
   -e "LOAD_TEST_SECRET=${LOAD_TEST_SECRET:-}" \
   -e "K6_PROFILE=cloud" \
   -e "K6_CLOUD_PROJECT_ID=${K6_CLOUD_PROJECT_ID:-}" \
-  "$SCRIPT"
+  "$SCRIPT" 2>&1 | tee "$LOAD_TEST_LOG"
+
+echo "Summary exported to $LOAD_TEST_JSON"
+echo "Full log saved to $LOAD_TEST_LOG"
+echo "Grafana Cloud UI also has the full run dashboard."

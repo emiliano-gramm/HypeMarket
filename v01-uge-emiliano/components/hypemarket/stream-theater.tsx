@@ -2,7 +2,6 @@ import { Maximize2, Volume2 } from 'lucide-react'
 
 interface StreamTheaterProps {
   title: string
-  streamer: string
   /** Optional viewer count — omitted when there is no real source. */
   viewers?: number
   /** When set, renders a real embed (Twitch / YouTube / Amazon IVS) instead of the faux stage. */
@@ -11,7 +10,6 @@ interface StreamTheaterProps {
 
 export function StreamTheater({
   title,
-  streamer,
   viewers,
   embedUrl,
 }: StreamTheaterProps) {
@@ -76,10 +74,7 @@ export function StreamTheater({
         )}
 
         {/* controls reveal on hover only — keeps the stage clean */}
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-          <span className="rounded-md bg-black/55 px-2 py-0.5 font-display text-xs font-semibold text-ink backdrop-blur-sm">
-            {streamer}
-          </span>
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-end gap-2 p-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <div className="flex items-center gap-1 rounded-md bg-black/55 p-0.5 text-ink-muted backdrop-blur-sm">
             <button
               type="button"

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# Reset the demo HypeMarket poll to a clean 50/50 baseline on Aurora DSQL.
-# Requires: aws CLI; psql (PostgreSQL 16 client) OR Node.js for fallback.
+# Reset demo HypeMarket + load-test pollution on Aurora DSQL (batched deletes).
+# Requires: aws CLI, Node.js, npm deps in infrastructure/dsql/
 #
 # Usage (from repo root):
 #   ./infrastructure/dsql/reset-demo-market.sh
 #
 # Reads DSQL_HOST and AWS_REGION from v01-uge-emiliano/.env.local when unset.
-# Override explicitly:
-#   DSQL_HOST=your-cluster.dsql.us-east-2.on.aws ./infrastructure/dsql/reset-demo-market.sh
+# Override batch size: RESET_BATCH_SIZE=400 (default)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -42,24 +41,7 @@ fi
 
 DSQL_HOST="${DSQL_HOST:?Set DSQL_HOST in the environment or v01-uge-emiliano/.env.local}"
 
-if command -v psql >/dev/null 2>&1; then
-  echo "Generating IAM auth token for ${DSQL_HOST}..."
-  TOKEN="$(aws dsql generate-db-connect-admin-auth-token \
-    --hostname "${DSQL_HOST}" \
-    --region "${REGION}" \
-    --expires-in 3600)"
-
-  echo "Running reset-demo-market.sql..."
-  PGPASSWORD="${TOKEN}" psql \
-    "host=${DSQL_HOST} user=admin dbname=postgres sslmode=require" \
-    -v ON_ERROR_STOP=1 \
-    -f "${ROOT}/infrastructure/dsql/reset-demo-market.sql"
-else
-  echo "psql not found — using Node.js reset script..."
-  cd "${ROOT}/infrastructure/dsql"
-  npm install --omit=dev --silent
-  DSQL_HOST="${DSQL_HOST}" AWS_REGION="${REGION}" node reset-demo-market.mjs
-fi
-
-echo ""
-echo "Demo market reset complete — pools should be team-a 50 / team-b 50."
+echo "Running batched reset via Node (DSQL transaction row limits)..."
+cd "${ROOT}/infrastructure/dsql"
+npm install --omit=dev --silent
+DSQL_HOST="${DSQL_HOST}" AWS_REGION="${REGION}" node reset-demo-market.mjs

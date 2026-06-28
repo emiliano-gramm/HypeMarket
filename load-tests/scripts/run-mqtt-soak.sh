@@ -17,6 +17,9 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 LOAD_TESTS="$ROOT/load-tests"
 MQTT_DIR="$LOAD_TESTS/mqtt"
 
+# shellcheck disable=SC1091
+source "$LOAD_TESTS/scripts/lib/results.sh"
+
 if [[ -f "$LOAD_TESTS/.env" ]]; then
   set -a
   # shellcheck disable=SC1091
@@ -43,7 +46,16 @@ if [[ ${#EXTRA_ARGS[@]} -eq 0 ]]; then
   EXTRA_ARGS=(--connections "$CONNECTIONS" --duration "$DURATION")
 fi
 
+load_test_init_results "$LOAD_TESTS"
+load_test_set_paths "mqtt-soak"
+
 echo "MQTT soak: ${EXTRA_ARGS[*]}"
 echo "Run producer in parallel: cd telemetry_mock_data && node producer.js"
 
-node "$MQTT_DIR/subscriber-soak.mjs" "${EXTRA_ARGS[@]}"
+set -o pipefail
+node "$MQTT_DIR/subscriber-soak.mjs" \
+  "${EXTRA_ARGS[@]}" \
+  --output "$LOAD_TEST_JSON" 2>&1 | tee "$LOAD_TEST_LOG"
+
+echo "Summary exported to $LOAD_TEST_JSON"
+echo "Full log saved to $LOAD_TEST_LOG"

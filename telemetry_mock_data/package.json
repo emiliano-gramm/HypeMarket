@@ -5,6 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "clear": "node clear-telemetry.mjs",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

@@ -53,11 +53,13 @@ function isOccConflict(err: unknown): boolean {
   );
 }
 
-async function withOccRetry<T>(fn: () => Promise<T>): Promise<T> {
+type OccRetryResult<T> = { value: T; occRetries: number };
+
+async function withOccRetry<T>(fn: () => Promise<T>): Promise<OccRetryResult<T>> {
   let lastErr: unknown;
   for (let attempt = 0; attempt < MAX_OCC_RETRIES; attempt += 1) {
     try {
-      return await fn();
+      return { value: await fn(), occRetries: attempt };
     } catch (err) {
       if (!isOccConflict(err)) throw err;
       lastErr = err;
@@ -292,7 +294,7 @@ export async function placeStake(
   const marketId = getDemoMarketId();
 
   try {
-    const result = await withOccRetry(() =>
+    const { value: result, occRetries } = await withOccRetry(() =>
       withDsqlClient((client) =>
         runStakeTxn(client, marketId, optionKey, amount, viewerExternalId)
       )
@@ -300,6 +302,9 @@ export async function placeStake(
 
     if (result.ok) {
       triggerPollAggregator();
+      if (occRetries > 0) {
+        return { ...result, occRetries };
+      }
     }
 
     return result;
@@ -363,7 +368,7 @@ export async function lockMarket(adminSecret: string): Promise<LockResult> {
   const marketId = getDemoMarketId();
 
   try {
-    const status = await withOccRetry(() =>
+    const { value: status } = await withOccRetry(() =>
       withDsqlClient(async (client) => {
         const result = await client.query<{ resolved_option_id: string | null }>(
           `UPDATE uge.polls
@@ -577,7 +582,7 @@ export async function resolveMarket(
   const marketId = getDemoMarketId();
 
   try {
-    const outcome = await withOccRetry(() =>
+    const { value: outcome } = await withOccRetry(() =>
       withDsqlClient((client) => runResolveTxn(client, marketId, winningOptionKey))
     );
 

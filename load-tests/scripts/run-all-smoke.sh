@@ -14,16 +14,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPTS="$ROOT/load-tests/scripts"
 
-echo "=== 1/3 Poll read (k6) ==="
+echo "=== 1/3 Market read (k6) ==="
 "$SCRIPTS/run-smoke.sh" poll-read
 
 if [[ -f "$ROOT/load-tests/.env" ]] && grep -q "LOAD_TEST_SECRET=" "$ROOT/load-tests/.env" 2>/dev/null; then
   echo ""
-  echo "=== 2/3 Poll vote writes (k6) ==="
+  echo "=== 2/3 Stake writes (k6) ==="
   "$SCRIPTS/run-smoke.sh" poll-vote
 else
   echo ""
-  echo "=== 2/3 Poll vote writes — SKIPPED (set LOAD_TEST_SECRET in load-tests/.env) ==="
+  echo "=== 2/3 Stake writes — SKIPPED (set LOAD_TEST_SECRET in load-tests/.env) ==="
 fi
 
 echo ""

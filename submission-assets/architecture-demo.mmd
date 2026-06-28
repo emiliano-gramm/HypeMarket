@@ -1,0 +1,24 @@
+%% HypeMarket — compact architecture for demo video (Phase 2 checklist)
+flowchart TB
+  BROWSER["Browser · HypeMarket<br/>v0 UI + custom AWS wiring<br/>MQTT map/feed · stake UI · Cognito guest"]
+
+  subgraph TELEM["① Telemetry · high frequency · fan-out"]
+    direction LR
+    P[producer.js] --> DDB[(DynamoDB MatchTelemetry)]
+    DDB -->|Stream| LF[Fanout λ]
+    LF --> IOT[IoT Core MQTT]
+  end
+
+  subgraph MKT["② Markets · transactional · sharded stakes"]
+    direction LR
+    V[Vercel Next.js<br/>placeStake · GET /api/markets]
+    V --> DS[(Aurora DSQL<br/>wallet · sharded pools · ledger)]
+    DS --> LA[Aggregator λ] --> POOLS[(materialized pools)]
+    POOLS --> CDN[Vercel Edge CDN] --> BROWSER
+  end
+
+  IOT -->|fan-out| BROWSER
+  BROWSER -->|placeStake · wallet| V
+  BROWSER -->|GET /api/telemetry hydrate| V
+  V -->|Query| DDB
+  ADM[Admin · lock · resolve<br/>parimutuel settlement] --> V

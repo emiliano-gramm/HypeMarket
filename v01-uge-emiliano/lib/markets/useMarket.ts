@@ -190,6 +190,7 @@ export function useMarket(): UseMarket {
   const postStakeBypassUntilRef = useRef(0);
   const syncedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevStatusRef = useRef<MarketStatus | null>(null);
+  const hasHydratedRef = useRef(false);
 
   const applyServerState = useCallback((state: MarketState) => {
     setMeta({
@@ -212,6 +213,10 @@ export function useMarket(): UseMarket {
       );
       return merged;
     });
+    if (!hasHydratedRef.current) {
+      prevStatusRef.current = state.status;
+      hasHydratedRef.current = true;
+    }
   }, []);
 
   const refreshMarket = useCallback(
@@ -287,15 +292,18 @@ export function useMarket(): UseMarket {
   // When the market transitions to resolved (admin settlement ran), pull the
   // settled wallet balance + per-stake payouts so banner/positions update
   // without a manual refresh, then emit a one-shot resolution event.
-  // Skip the first server hydrate so revisiting an already-resolved market
-  // does not replay the celebration banner.
+  // prevStatusRef is seeded from the first server hydrate so revisiting an
+  // already-resolved market does not replay the celebration banner.
   useEffect(() => {
-    if (prevStatusRef.current === null) {
+    if (!hasHydratedRef.current) return;
+
+    const prev = prevStatusRef.current;
+    if (prev === null) {
       prevStatusRef.current = meta.status;
       return;
     }
+    if (prev === meta.status) return;
 
-    const prev = prevStatusRef.current;
     prevStatusRef.current = meta.status;
     if (meta.status === "resolved" && prev !== "resolved" && viewerId) {
       void (async () => {

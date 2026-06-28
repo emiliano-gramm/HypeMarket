@@ -29,5 +29,5 @@ async function generateTelemetry() {
   }
 }
 
-// Fire every 500ms
-setInterval(generateTelemetry, 500);
+// Fire every 2 seconds
+setInterval(generateTelemetry, 5000);

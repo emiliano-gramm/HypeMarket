@@ -12,15 +12,17 @@ While a match streams, viewers spend free **Hype Credits** to stake on outcomes 
 
 ## Architecture (two velocities, two databases)
 
+Full diagram (Mermaid, repo-accurate): `.project_utils/aws_vercel_utils/architecture.mmd` — export to PNG for Devpost. Narrative: `explanation.md` §2.
+
 ```text
 Telemetry (fast, ephemeral)          Markets (transactional, auditable)
 ─────────────────────────            ───────────────────────────────────
-producer.js → DynamoDB               Browser → Next.js (Vercel)
-           → Stream → Lambda                    → placeStake (Server Action)
-           → IoT Core MQTT                      → Aurora DSQL (sharded pools,
-           → all viewers (map, feed)              wallet, append-only ledger)
-                                              → GET /api/markets (edge-cached odds)
-                                              → resolve + parimutuel settlement
+producer.js → DynamoDB               Browser → placeStake / wallet (Server Actions)
+           → Stream → Fanout λ                  → Aurora DSQL vote_shards + ledger
+           → IoT Core MQTT           Aggregator λ → poll_totals
+           → all viewers (MQTT)      GET /api/markets (Vercel Edge CDN) → odds UI
+reconnect → GET /api/telemetry       POST /api/markets/resolve → parimutuel payout
+           → DynamoDB Query
 ```
 
 | Layer | Stack | Role |
@@ -28,8 +30,6 @@ producer.js → DynamoDB               Browser → Next.js (Vercel)
 | Frontend | Next.js on Vercel, v0 layout | Dashboard, optimistic stake UI, MQTT client |
 | Telemetry | DynamoDB, Lambda, IoT Core, Cognito guest | Ingest once, broadcast to millions |
 | Markets | Aurora DSQL, aggregator Lambda | Sharded stake writes, wallet ledger, settlement |
-
-<!-- TODO: add architecture diagram PNG for Devpost -->
 
 ---
 
