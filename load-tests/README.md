@@ -1,41 +1,40 @@
-# Step 7 — Distributed Global Load Testing
+# Load testing
 
-Stress-tests the three production paths from `idea.md` using **[Grafana k6](https://k6.io/)** (HTTP) and a **Node MQTT soak** (IoT WebSocket fan-out).
+Stress-tests three production paths for **HypeMarket** using **[Grafana k6](https://k6.io/)** (HTTP) and a **Node MQTT soak** (IoT WebSocket fan-out).
 
-## Why k6 (not Artillery)
+> **Script names:** `poll-read.js` and `poll-vote.js` are legacy filenames. They hit `GET /api/markets` and the stake load-test endpoint for HypeMarket **markets**, not a separate polling product.
 
-| Factor | k6 | Artillery |
-|---|---|---|
-| Listed in `idea.md` | First choice | Second |
-| Stack alignment | JavaScript scenarios | YAML + plugins |
-| Global distribution | k6 Cloud load zones (US/EU/AP) | Artillery Pro |
-| HTTP metrics | p95/p99, thresholds, Grafana | Good, less integrated |
-| Future steps 10–12 | Grafana dashboards for demo screenshots | Possible but k6 fits hackathon narrative |
+**Target deployment (default):** https://hypemarket.vercel.app
 
-MQTT uses a separate Node script because k6 does not speak MQTT-over-WSS with Cognito guest auth — the soak reuses the same SDK pattern as `useTelemetryStream.ts`.
+**App README:** [`../README.md`](../README.md)
+
+---
 
 ## What gets tested
 
 ```text
-┌──────────────────────────────────────────────────────────────┐
-│  k6 poll-read.js     →  GET /api/markets (edge-cached reads) │
-│  k6 poll-vote.js     →  POST /api/load-test/vote → placeStake│
-│  k6 combined.js      →  mixed readers + stakers (live match) │
-│  mqtt/subscriber-soak → IoT Core WSS + Cognito (telemetry)   │
-└──────────────────────────────────────────────────────────────┘
+k6 poll-read.js       →  GET /api/markets (edge-cached reads, 2s interval)
+k6 poll-vote.js       →  POST /api/load-test/vote → placeStake (DSQL writes)
+k6 combined.js        →  mixed readers + stakers (live-match shape)
+mqtt/subscriber-soak  →  IoT Core MQTT over WSS (Cognito guest creds)
 ```
+
+k6 does not speak MQTT-over-WSS with Cognito guest auth, so telemetry fan-out uses a separate Node script that mirrors `useTelemetryStream.ts`.
+
+---
 
 ## Prerequisites
 
 1. **k6** — [Install k6](https://grafana.com/docs/k6/latest/set-up/install-k6/)
-2. **Config** — copy env template:
+
+2. **Config file:**
 
 ```bash
 cp load-tests/.env.example load-tests/.env
-# Edit LOAD_TEST_SECRET and verify AWS IoT / Cognito values
+# Edit values (see load-tests/.env.example for all options)
 ```
 
-3. **Vercel** — enable stake load tests (temporary):
+3. **Stake writes on production** (temporary window only):
 
 ```bash
 # Generate a secret, add to Vercel Production, redeploy
@@ -43,136 +42,187 @@ vercel env add LOAD_TEST_SECRET production
 cd v01-uge-emiliano && vercel --prod
 ```
 
-When `LOAD_TEST_SECRET` is unset, `POST /api/load-test/vote` returns **404** (invisible in production).
+When `LOAD_TEST_SECRET` is unset on Vercel, `POST /api/load-test/vote` returns **404**.
 
-4. **MQTT deps** (first run only):
+4. **MQTT soak deps** (first run):
 
 ```bash
 npm install --prefix load-tests/mqtt --omit=dev
 ```
 
-## Quick start (smoke)
+---
+
+## Quick start
+
+### All smoke paths (~2–3 min)
 
 ```bash
-# Poll reads only (no secret required)
-./load-tests/scripts/run-smoke.sh poll-read
-
-# Stake writes (requires LOAD_TEST_SECRET on Vercel + in load-tests/.env)
-./load-tests/scripts/run-smoke.sh poll-vote
-
-# Mixed workload
-./load-tests/scripts/run-smoke.sh combined
-
-# IoT subscribers (run producer in another terminal)
-cd telemetry_mock_data && node producer.js
-./load-tests/scripts/run-mqtt-soak.sh --connections 25 --duration 30
-
-# All paths
 ./load-tests/scripts/run-all-smoke.sh
 ```
 
-## Stress (local, hundreds of VUs)
+Runs market reads, stake writes (if `LOAD_TEST_SECRET` is in `.env`), and a short MQTT soak.
+
+### Individual smoke scenarios
+
+```bash
+# Market reads only (no secret required)
+./load-tests/scripts/run-smoke.sh poll-read
+
+# Stake writes (requires LOAD_TEST_SECRET in load-tests/.env + on Vercel)
+./load-tests/scripts/run-smoke.sh poll-vote
+
+# Mixed readers + stakers
+./load-tests/scripts/run-smoke.sh combined
+```
+
+### MQTT subscriber soak
+
+Run the telemetry producer first:
+
+```bash
+cd telemetry_mock_data && node producer.js
+```
+
+In another terminal:
+
+```bash
+./load-tests/scripts/run-mqtt-soak.sh --connections 50 --duration 60
+```
+
+Set `AWS_IOT_ENDPOINT`, `COGNITO_IDENTITY_POOL_ID`, and `AWS_REGION` in `load-tests/.env`.
+
+---
+
+## Stress (local, auto-stops ~5 min)
 
 ```bash
 ./load-tests/scripts/run-stress.sh combined
+./load-tests/scripts/run-stress.sh poll-vote
+./load-tests/scripts/run-stress.sh poll-read
 ```
 
-Profiles are defined in `load-tests/k6/lib/config.js`:
+Profiles live in `load-tests/k6/lib/config.js`:
 
 | Profile | Market readers | Stake rate | Use case |
-|---|---|---|---|
-| `smoke` | 5–10 VUs | 2–5/s | CI / sanity |
-| `stress` | up to 800 VUs | up to 300/s | Local machine max |
-| `cloud` | up to 10k VUs | up to 3k/s | k6 Cloud saturation (optional) |
-| `cloud-geo` | 45 VUs | 45/s | k6 Cloud **sustained** geo proof (Phase 5) |
+|---------|----------------|------------|----------|
+| `smoke` | 5–10 VUs | 2–5/s | Sanity check, safe to repeat |
+| `stress` | up to 800 VUs | up to 300/s | Local saturation |
+| `cloud-geo` | 25 VUs | 45/s sustained | k6 Cloud geo proof |
+| `cloud` | up to 10k VUs | up to 3k/s | Optional saturation (burns VUh fast) |
 
-## Distributed global load (k6 Cloud)
-
-### Recommended: geo sustained run (Phase 5)
-
-After local sustained stress passes (~45/s at 99.9%), run **once** for Grafana load-zone screenshots at the **same honest operating point** — not the 10k-VU saturation profile.
-
-1. Create a [Grafana Cloud k6](https://grafana.com/products/cloud/k6/) account
-2. `k6 cloud login` (k6 v2+ — prompts for API token + stack; was `k6 login cloud` in v1)
-3. Set `LOAD_TEST_SECRET` on Vercel + in `load-tests/.env`
-4. Run:
-
-```bash
-./load-tests/scripts/run-k6-cloud-geo.sh combined
-```
-
-Defaults: **45 stakes/sec** + **45 market readers** for **5 minutes**, split across **US (Ashburn)**, **EU (Dublin)**, and **AP (Singapore)**. Write-only headline number: `./load-tests/scripts/run-k6-cloud-geo.sh poll-vote`.
-
-After the run:
+After any write stress, reset the demo market:
 
 ```bash
 ./infrastructure/dsql/reset-demo-market.sh
 ```
 
-Override rate/duration via `GEO_STAKE_RATE`, `GEO_DURATION`, `GEO_READER_VUS` in `load-tests/.env`.
+---
 
-### Optional: saturation cloud run
+## k6 Cloud (distributed load)
 
-**Gate:** Skip unless you want saturation evidence. The `cloud` profile ramps to ~10× local stress (10k VUs, 3k stakes/sec) and burns VUh fast.
+### Single multi-zone run
+
+Requires [Grafana Cloud k6](https://grafana.com/products/cloud/k6/) and `k6 cloud login`.
+
+```bash
+./load-tests/scripts/run-k6-cloud-geo.sh poll-vote
+./load-tests/scripts/run-k6-cloud-geo.sh combined
+```
+
+Defaults: **45 stakes/sec** (+ 25 market readers for `combined`) for **5 minutes**, load zone from `GEO_LOAD_ZONE` in `.env`.
+
+### Free tier: one zone per run
+
+Grafana Cloud Free allows one load zone per run. Run US, EU, and AP sequentially:
+
+```bash
+./load-tests/scripts/run-k6-cloud-geo-all-zones.sh poll-vote
+```
+
+Default: **2 minutes per zone** at 45/s (override with `GEO_DURATION=5m`).
+
+### Optional saturation run
+
+High VU count, burns quota quickly:
 
 ```bash
 ./load-tests/scripts/run-k6-cloud.sh combined
 ```
 
-## Results
+---
 
-Each runner writes timestamped artifacts to `load-tests/results/` (gitignored):
+## Results and artifacts
 
-| Runner | JSON summary | Full terminal log |
-|---|---|---|
+Each runner writes timestamped files to `load-tests/results/` (gitignored):
+
+| Runner | JSON summary | Full log |
+|--------|--------------|----------|
 | `run-smoke.sh poll-read` | `smoke-poll-read-YYYYMMDD-HHMMSS.json` | `.log` |
 | `run-smoke.sh poll-vote` | `smoke-poll-vote-YYYYMMDD-HHMMSS.json` | `.log` |
 | `run-stress.sh combined` | `stress-combined-YYYYMMDD-HHMMSS.json` | `.log` |
 | `run-mqtt-soak.sh` | `mqtt-soak-YYYYMMDD-HHMMSS.json` | `.log` |
-| `run-k6-cloud-geo.sh combined` | `cloud-geo-combined-YYYYMMDD-HHMMSS.json` | `.log` |
-| `run-k6-cloud.sh combined` | `cloud-combined-YYYYMMDD-HHMMSS.json` | `.log` |
+| `run-k6-cloud-geo.sh` | `cloud-geo-*-YYYYMMDD-HHMMSS.json` | `.log` |
 
-Keep the JSON files for Phase 4/5 scale-evidence slides (stakes/sec, OCC rollbacks, MQTT fan-out). The `.log` files capture the full k6/Node output for screenshots and troubleshooting.
+k6 Cloud runs also appear in the Grafana Cloud UI with full latency histograms.
 
-k6 Cloud runs also appear in the Grafana Cloud UI with full latency histograms — useful for step 12 documentation screenshots.
+### Reference numbers (Jun 2026, production)
 
-## Thresholds (pass/fail)
+| Metric | Value |
+|--------|-------|
+| Smoke stakes | 60 in 30s, 100% success, p95 ~453ms, 0 rollbacks |
+| MQTT fan-out | ~121 msg/s, 50 subscribers |
+| Sustained writes | ~45/s at 99.9% success, p95 638ms, 13,392 stakes in write-only stress |
+| Combined saturation | ~28% stake success when ~800 readers compete with writers |
 
-Default thresholds in `load-tests/k6/lib/config.js`:
+---
+
+## How the stake endpoint works
+
+- **`/api/load-test/vote`** calls the same `placeStake` Server Action as the dashboard (Vercel → Aurora DSQL: wallet debit, shard increment, ledger row).
+- Default stake amount: **50** credits (matches UI chips). Override with `amount` in the JSON body.
+- Each k6 iteration uses a **unique viewer ID**; wallets auto-provision with 1,000 credits on first stake.
+- **`stake_occ_retries`**: OCC serialization retries from DSQL.
+- **`stake_rollbacks`**: exhausted retries. Target **0** under normal sharded load.
+
+Market read scenarios sleep **2s** between polls to mirror `useMarket()`.
+
+---
+
+## Pass/fail thresholds
+
+Defaults in `load-tests/k6/lib/config.js`:
 
 - `http_req_failed` < 5%
 - `http_req_duration` p95 < 2s (reads), p95 < 3s (stakes)
 - `checks` > 95%
 - `stake_success_rate` > 90%
 
-Tune per your AWS/Vercel limits.
+Peak stress profiles may **fail thresholds on purpose**. That is saturation data, not a broken deployment.
 
-## Architecture notes
-
-- **Stake endpoint** (`/api/load-test/vote`) calls the same `placeStake` Server Action as the dashboard — tests the real Vercel → Aurora DSQL sharded write path (wallet debit + pool credit), not a mock. Default stake amount is **50** credits (matches UI chips); override with `amount` in the JSON body.
-- **Unique viewer IDs** per k6 iteration avoid wallet collisions during write tests; each viewer auto-provisions a 1000-credit wallet on first stake.
-- **Market read** sleeps 2s between requests to mirror `useMarket()` (`POLL_REFRESH_MS`).
-- **OCC metrics** — `stake_occ_retries` counts serialization retries returned by `placeStake`; `stake_rollbacks` counts exhausted OCC retries (`code: "error"`). Target **0 rollbacks** under sharded-pool load.
-- **MQTT soak** spawns N independent Cognito guest identities — same security model as production viewers.
+---
 
 ## Troubleshooting
 
 | Symptom | Fix |
-|---|---|
+|---------|-----|
 | `404` on stake endpoint | Set `LOAD_TEST_SECRET` on Vercel and redeploy |
-| `403` on stake endpoint | Secret mismatch between `.env` and Vercel |
-| MQTT connections fail | Check `AWS_IOT_ENDPOINT` and `COGNITO_IDENTITY_POOL_ID` |
+| `403` on stake endpoint | Secret mismatch between `load-tests/.env` and Vercel |
+| MQTT connections fail | Check `AWS_IOT_ENDPOINT` and `COGNITO_IDENTITY_POOL_ID` in `.env` |
 | Zero MQTT messages | Run `telemetry_mock_data/producer.js` during soak |
-| k6 Cloud auth error | Run `k6 cloud login` (or set `K6_CLOUD_TOKEN` + `K6_CLOUD_STACK_ID`) |
+| k6 Cloud auth error | Run `k6 cloud login` or set `K6_CLOUD_TOKEN` + `K6_CLOUD_STACK_ID` |
+| DSQL clutter after tests | `./infrastructure/dsql/reset-demo-market.sh` |
 
-## Files
+---
+
+## File map
 
 | Path | Purpose |
-|---|---|
-| `k6/poll-read.js` | Edge-cached market state + odds |
+|------|---------|
+| `k6/poll-read.js` | Edge-cached `GET /api/markets` |
 | `k6/poll-vote.js` | DSQL sharded stake writes |
-| `k6/combined.js` | Realistic mixed traffic |
+| `k6/combined.js` | Mixed read + write traffic |
 | `k6/lib/config.js` | Profiles, thresholds, cloud zones |
-| `mqtt/subscriber-soak.mjs` | IoT Core concurrent subscribers |
-| `scripts/run-*.sh` | Runners for smoke / stress / cloud / mqtt |
-| `v01-uge-emiliano/app/api/load-test/vote/route.ts` | Guarded stake API for k6 |
+| `mqtt/subscriber-soak.mjs` | Concurrent IoT Core subscribers |
+| `scripts/run-*.sh` | Smoke, stress, cloud, MQTT runners |
+| `.env.example` | Template for secrets and tuning |
+| `../v01-uge-emiliano/app/api/load-test/vote/route.ts` | Guarded k6 stake API |
