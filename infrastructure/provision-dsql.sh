@@ -8,7 +8,7 @@ REGION="${1:-us-east-2}"
 echo "Creating Aurora DSQL cluster in ${REGION}..."
 RESPONSE="$(aws dsql create-cluster \
   --region "${REGION}" \
-  --tags Name=uge-esports-social,Project=UltimateGlobalEntertainment \
+  --tags Name=uge-esports-social,Project=HypeMarket \
   --deletion-protection-enabled \
   --output json)"
 

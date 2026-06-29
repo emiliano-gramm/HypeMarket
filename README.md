@@ -2,7 +2,7 @@
 
 **Hackathon:** [H0: Hack the Zero Stack](https://h01.devpost.com/) — Track 3: Million-scale Global App
 
-**Live app:** https://ultimate-global-entertainment.vercel.app
+**Live app:** https://hypemarket.vercel.app
 
 While a match streams, viewers spend free **Hype Credits** to stake on outcomes in real-time **parimutuel markets**. Implied odds come from the crowd’s pooled stakes—not from us. Live match telemetry (kills, objectives, positions) fans out over MQTT beside the market UI so momentum and staking feel connected.
 

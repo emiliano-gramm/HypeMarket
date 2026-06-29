@@ -1,5 +1,5 @@
 /**
- * Shared k6 configuration for Ultimate Global Entertainment load tests.
+ * Shared k6 configuration for HypeMarket load tests.
  * Override via environment variables (see load-tests/.env.example).
  */
 
@@ -17,7 +17,7 @@ const geoStakeMaxVus = Number(
 const geoStakePreAllocated = Math.min(Math.max(geoStakeRate, 20), geoStakeMaxVus);
 
 export const BASE_URL = (
-  __ENV.BASE_URL || "https://ultimate-global-entertainment.vercel.app"
+  __ENV.BASE_URL || "https://hypemarket.vercel.app"
 ).replace(/\/$/, "");
 
 export const LOAD_TEST_SECRET = __ENV.LOAD_TEST_SECRET || "";

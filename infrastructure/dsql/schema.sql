@@ -1,4 +1,4 @@
--- Aurora DSQL schema for Ultimate Global Entertainment (social / polls)
+-- Aurora DSQL schema for HypeMarket (social / polls)
 -- Region: us-east-2 | PostgreSQL 16 compatible
 --
 -- Sharded counter pattern: concurrent votes UPDATE distinct vote_shards rows
