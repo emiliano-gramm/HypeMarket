@@ -33,7 +33,7 @@ if [[ -f "$LOAD_TESTS/.env" ]]; then
 fi
 
 export K6_PROFILE=stress
-export BASE_URL="${BASE_URL:-https://hypemarket.vercel.app}"
+export BASE_URL="${BASE_URL:-https://hypemarket-v0-aws.vercel.app}"
 
 case "$SCENARIO" in
   poll-read) SCRIPT="$LOAD_TESTS/k6/poll-read.js" ;;

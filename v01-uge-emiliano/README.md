@@ -6,7 +6,7 @@ Live esports prediction dashboard: parimutuel staking, MQTT telemetry map, and w
 
 **Build write-up:** https://dev.to/emiliano_xy/building-hypemarket-a-million-scale-esports-prediction-market-with-dynamodb-iot-core-and-vercel-2g3k
 
-**Live:** https://hypemarket.vercel.app
+**Live:** https://hypemarket-v0-aws.vercel.app
 
 ---
 

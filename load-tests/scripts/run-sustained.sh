@@ -33,7 +33,7 @@ if [[ -f "$LOAD_TESTS/.env" ]]; then
 fi
 
 export K6_PROFILE=cloud-geo
-export BASE_URL="${BASE_URL:-https://hypemarket.vercel.app}"
+export BASE_URL="${BASE_URL:-https://hypemarket-v0-aws.vercel.app}"
 export GEO_STAKE_RATE="${GEO_STAKE_RATE:-45}"
 export GEO_DURATION="${GEO_DURATION:-5m}"
 export GEO_READER_VUS="${GEO_READER_VUS:-25}"

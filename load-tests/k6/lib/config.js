@@ -17,7 +17,7 @@ const geoStakeMaxVus = Number(
 const geoStakePreAllocated = Math.min(Math.max(geoStakeRate, 20), geoStakeMaxVus);
 
 export const BASE_URL = (
-  __ENV.BASE_URL || "https://hypemarket.vercel.app"
+  __ENV.BASE_URL || "https://hypemarket-v0-aws.vercel.app"
 ).replace(/\/$/, "");
 
 export const LOAD_TEST_SECRET = __ENV.LOAD_TEST_SECRET || "";

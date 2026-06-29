@@ -4,7 +4,7 @@ Stress-tests three production paths for **HypeMarket** using **[Grafana k6](http
 
 > **Script names:** `poll-read.js` and `poll-vote.js` are legacy filenames. They hit `GET /api/markets` and the stake load-test endpoint for HypeMarket **markets**, not a separate polling product.
 
-**Target deployment (default):** https://hypemarket.vercel.app
+**Target deployment (default):** https://hypemarket-v0-aws.vercel.app
 
 **App README:** [`../README.md`](../README.md)
 

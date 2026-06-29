@@ -32,7 +32,7 @@ if [[ -f "$LOAD_TESTS/.env" ]]; then
 fi
 
 export K6_PROFILE="${K6_PROFILE:-smoke}"
-export BASE_URL="${BASE_URL:-https://hypemarket.vercel.app}"
+export BASE_URL="${BASE_URL:-https://hypemarket-v0-aws.vercel.app}"
 
 case "$SCENARIO" in
   poll-read)

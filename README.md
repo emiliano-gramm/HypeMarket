@@ -2,7 +2,7 @@
 
 **Hackathon:** [H0: Hack the Zero Stack](https://h01.devpost.com/) - Track 3: Million-scale Global App
 
-**Live app:** https://hypemarket.vercel.app
+**Live app:** https://hypemarket-v0-aws.vercel.app
 
 **Build write-up:** https://dev.to/emiliano_xy/building-hypemarket-a-million-scale-esports-prediction-market-with-dynamodb-iot-core-and-vercel-2g3k
 
@@ -125,7 +125,7 @@ Copy [`infrastructure/dsql/cluster.env.example`](infrastructure/dsql/cluster.env
 With `ADMIN_SECRET` set locally or on Vercel:
 
 ```bash
-export URL=http://localhost:3000   # or https://hypemarket.vercel.app
+export URL=http://localhost:3000   # or https://hypemarket-v0-aws.vercel.app
 export ADMIN_SECRET=your-secret
 
 # 1. Lock staking
@@ -183,7 +183,7 @@ cd telemetry_mock_data && node producer.js
 
 ### Published scale numbers (Jun 2026)
 
-Results from production and local runs against https://hypemarket.vercel.app:
+Results from production and local runs against https://hypemarket-v0-aws.vercel.app:
 
 | Run | Result |
 |-----|--------|
