@@ -396,10 +396,170 @@ type SettleResolveOutcome =
   | { kind: "ok"; summary: SettlementSummary }
   | { kind: "error"; code: AdminErrorCode };
 
+/** Aurora DSQL caps rows per transaction; batch like reset-demo-market.mjs. */
+const SETTLEMENT_BATCH_SIZE = 400;
+const WALLET_CREDIT_BATCH_SIZE = 100;
+
+async function runInTxn(
+  client: pg.Client,
+  fn: () => Promise<void>
+): Promise<void> {
+  await client.query("BEGIN");
+  try {
+    await fn();
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+async function batchSettleLosingStakes(
+  client: pg.Client,
+  marketId: string,
+  winningOptionId: string
+): Promise<number> {
+  let total = 0;
+  for (;;) {
+    let batchCount = 0;
+    await runInTxn(client, async () => {
+      const result = await client.query(
+        `UPDATE uge.vote_events
+         SET settled = true, payout = 0
+         WHERE event_id IN (
+           SELECT event_id FROM uge.vote_events
+           WHERE poll_id = $1
+             AND option_id <> $2
+             AND amount IS NOT NULL AND amount > 0
+             AND COALESCE(settled, false) = false
+           LIMIT $3
+         )`,
+        [marketId, winningOptionId, SETTLEMENT_BATCH_SIZE]
+      );
+      batchCount = result.rowCount ?? 0;
+    });
+    if (batchCount === 0) break;
+    total += batchCount;
+  }
+  return total;
+}
+
+async function batchSettleWinningStakes(
+  client: pg.Client,
+  marketId: string,
+  winningOptionId: string,
+  winningPool: number,
+  totalPool: number
+): Promise<number> {
+  let total = 0;
+  for (;;) {
+    let batchCount = 0;
+    await runInTxn(client, async () => {
+      const result = await client.query(
+        `UPDATE uge.vote_events
+         SET settled = true,
+             payout = floor(amount::numeric / $3::numeric * $4::numeric)
+         WHERE event_id IN (
+           SELECT event_id FROM uge.vote_events
+           WHERE poll_id = $1
+             AND option_id = $2
+             AND amount IS NOT NULL AND amount > 0
+             AND COALESCE(settled, false) = false
+           LIMIT $5
+         )`,
+        [
+          marketId,
+          winningOptionId,
+          winningPool,
+          totalPool,
+          SETTLEMENT_BATCH_SIZE,
+        ]
+      );
+      batchCount = result.rowCount ?? 0;
+    });
+    if (batchCount === 0) break;
+    total += batchCount;
+  }
+  return total;
+}
+
+async function fetchWinnerPayoutsByViewer(
+  client: pg.Client,
+  marketId: string,
+  winningOptionId: string
+): Promise<Map<string, number>> {
+  const result = await client.query<{
+    viewer_external_id: string;
+    payout: string;
+  }>(
+    `SELECT viewer_external_id, SUM(payout)::bigint AS payout
+     FROM uge.vote_events
+     WHERE poll_id = $1
+       AND option_id = $2
+       AND settled = true
+       AND payout > 0
+     GROUP BY viewer_external_id`,
+    [marketId, winningOptionId]
+  );
+  const payoutByViewer = new Map<string, number>();
+  for (const row of result.rows) {
+    payoutByViewer.set(row.viewer_external_id, Number(row.payout));
+  }
+  return payoutByViewer;
+}
+
+async function creditWinnerWallets(
+  client: pg.Client,
+  marketId: string,
+  payoutByViewer: Map<string, number>
+): Promise<{ creditsPaidOut: number; winnersPaid: number }> {
+  const entries = [...payoutByViewer.entries()].filter(([, payout]) => payout > 0);
+  let creditsPaidOut = 0;
+  let winnersPaid = 0;
+
+  for (let i = 0; i < entries.length; i += WALLET_CREDIT_BATCH_SIZE) {
+    const chunk = entries.slice(i, i + WALLET_CREDIT_BATCH_SIZE);
+    await runInTxn(client, async () => {
+      for (const [viewer, payout] of chunk) {
+        const existing = await client.query(
+          `SELECT 1 FROM uge.wallet_ledger
+           WHERE external_id = $1 AND poll_id = $2 AND txn_type = 'payout'
+           LIMIT 1`,
+          [viewer, marketId]
+        );
+        if ((existing.rowCount ?? 0) > 0) continue;
+
+        const credit = await client.query<{ balance: string }>(
+          `UPDATE uge.viewer_wallets
+           SET balance = balance + $2,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE external_id = $1
+           RETURNING balance::bigint AS balance`,
+          [viewer, payout]
+        );
+        if (credit.rowCount !== 1) {
+          throw new Error(`Wallet missing for winning viewer ${viewer}`);
+        }
+        await client.query(
+          `INSERT INTO uge.wallet_ledger
+             (external_id, txn_type, amount, balance_after, poll_id)
+           VALUES ($1, 'payout', $2, $3, $4)`,
+          [viewer, payout, Number(credit.rows[0].balance), marketId]
+        );
+        creditsPaidOut += payout;
+        winnersPaid += 1;
+      }
+    });
+  }
+
+  return { creditsPaidOut, winnersPaid };
+}
+
 /**
- * Resolve the market to a winning outcome and pay winners parimutuel-style, all
- * in one DSQL transaction. Idempotent: stakes already marked settled are never
- * paid twice, and re-resolving to the same outcome only settles leftovers.
+ * Resolve the market to a winning outcome and pay winners parimutuel-style.
+ * Settlement runs in small DSQL transactions so load-test stake volume does not
+ * hit per-transaction row limits. Idempotent: retries skip settled stakes and
+ * viewers already credited in the wallet ledger.
  *
  *   winning_pool = SUM(staked_amount on winning outcome)   [shard ground truth]
  *   total_pool   = SUM(staked_amount across all outcomes)
@@ -458,105 +618,64 @@ async function runResolveTxn(
     if (row.option_id === winningOptionId) winningPool = pool;
   }
 
-  await client.query("BEGIN");
-  try {
-    // 1. Mark the market resolved (idempotent — preserves first resolved_at).
-    await client.query(
-      `UPDATE uge.polls
-       SET resolved_option_id = $2,
-           resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP),
-           locks_at = COALESCE(locks_at, CURRENT_TIMESTAMP),
-           status = 'resolved'
-       WHERE poll_id = $1`,
-      [marketId, winningOptionId]
+  const losersSettled = await batchSettleLosingStakes(
+    client,
+    marketId,
+    winningOptionId
+  );
+
+  let winnersSettled = 0;
+  if (winningPool > 0) {
+    winnersSettled = await batchSettleWinningStakes(
+      client,
+      marketId,
+      winningOptionId,
+      winningPool,
+      totalPool
     );
-
-    // 2. Settle losing stakes (payout 0) — single bulk update.
-    const losers = await client.query(
-      `UPDATE uge.vote_events
-       SET settled = true, payout = 0
-       WHERE poll_id = $1
-         AND option_id <> $2
-         AND amount IS NOT NULL AND amount > 0
-         AND COALESCE(settled, false) = false`,
-      [marketId, winningOptionId]
-    );
-
-    // 3. Settle winning stakes, computing each payout with integer floor math.
-    let winnerRows: { viewer_external_id: string; payout: string }[] = [];
-    if (winningPool > 0) {
-      const winners = await client.query<{
-        viewer_external_id: string;
-        payout: string;
-      }>(
-        `UPDATE uge.vote_events
-         SET settled = true,
-             payout = floor(amount::numeric / $3::numeric * $4::numeric)
-         WHERE poll_id = $1
-           AND option_id = $2
-           AND amount IS NOT NULL AND amount > 0
-           AND COALESCE(settled, false) = false
-         RETURNING viewer_external_id, payout::bigint AS payout`,
-        [marketId, winningOptionId, winningPool, totalPool]
-      );
-      winnerRows = winners.rows;
-    }
-
-    // 4. Aggregate payouts per viewer → one wallet credit + ledger row each.
-    const payoutByViewer = new Map<string, number>();
-    for (const row of winnerRows) {
-      const payout = Number(row.payout);
-      if (payout <= 0) continue;
-      payoutByViewer.set(
-        row.viewer_external_id,
-        (payoutByViewer.get(row.viewer_external_id) ?? 0) + payout
-      );
-    }
-
-    let creditsPaidOut = 0;
-    for (const [viewer, payout] of payoutByViewer) {
-      const credit = await client.query<{ balance: string }>(
-        `UPDATE uge.viewer_wallets
-         SET balance = balance + $2,
-             updated_at = CURRENT_TIMESTAMP
-         WHERE external_id = $1
-         RETURNING balance::bigint AS balance`,
-        [viewer, payout]
-      );
-      if (credit.rowCount !== 1) {
-        // A winning staker always has a wallet (placeStake provisions it);
-        // a missing row means corrupt state — fail the whole settlement.
-        throw new Error(`Wallet missing for winning viewer ${viewer}`);
-      }
-      await client.query(
-        `INSERT INTO uge.wallet_ledger
-           (external_id, txn_type, amount, balance_after, poll_id)
-         VALUES ($1, 'payout', $2, $3, $4)`,
-        [viewer, payout, Number(credit.rows[0].balance), marketId]
-      );
-      creditsPaidOut += payout;
-    }
-
-    await client.query("COMMIT");
-
-    return {
-      kind: "ok",
-      summary: {
-        marketId,
-        winningOptionKey,
-        winningLabel,
-        winningPool,
-        totalPool,
-        winnersPaid: payoutByViewer.size,
-        stakesSettled: (losers.rowCount ?? 0) + winnerRows.length,
-        creditsPaidOut,
-        alreadyResolved,
-      },
-    };
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
   }
+
+  const payoutByViewer = await fetchWinnerPayoutsByViewer(
+    client,
+    marketId,
+    winningOptionId
+  );
+  const { creditsPaidOut, winnersPaid } = await creditWinnerWallets(
+    client,
+    marketId,
+    payoutByViewer
+  );
+
+  // Flip UI to resolved only after stakes are settled and wallets credited so
+  // the banner and WalletCard read the final balance on the first poll.
+  if (!alreadyResolved) {
+    await runInTxn(client, async () => {
+      await client.query(
+        `UPDATE uge.polls
+         SET resolved_option_id = $2,
+             resolved_at = COALESCE(resolved_at, CURRENT_TIMESTAMP),
+             locks_at = COALESCE(locks_at, CURRENT_TIMESTAMP),
+             status = 'resolved'
+         WHERE poll_id = $1`,
+        [marketId, winningOptionId]
+      );
+    });
+  }
+
+  return {
+    kind: "ok",
+    summary: {
+      marketId,
+      winningOptionKey,
+      winningLabel,
+      winningPool,
+      totalPool,
+      winnersPaid,
+      stakesSettled: losersSettled + winnersSettled,
+      creditsPaidOut,
+      alreadyResolved,
+    },
+  };
 }
 
 /**

@@ -333,6 +333,25 @@ export function useMarket(): UseMarket {
     }
   }, [meta.status, viewerId]);
 
+  // Keep wallet + positions fresh while resolved (covers slow batched settlement).
+  useEffect(() => {
+    if (meta.status !== "resolved" || !viewerId) return;
+
+    const refreshWalletAndPositions = () => {
+      void getWallet(viewerId).then((result) => {
+        if (result.ok) setWallet(result.wallet);
+      });
+      void refreshPositions();
+    };
+
+    refreshWalletAndPositions();
+    const interval = setInterval(
+      refreshWalletAndPositions,
+      MARKET_REFRESH_MS
+    );
+    return () => clearInterval(interval);
+  }, [meta.status, viewerId, refreshPositions]);
+
   const markSynced = useCallback(() => {
     setSyncStatus("synced");
     if (syncedTimerRef.current) clearTimeout(syncedTimerRef.current);

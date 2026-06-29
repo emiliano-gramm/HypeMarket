@@ -101,6 +101,17 @@ Set `AWS_IOT_ENDPOINT`, `COGNITO_IDENTITY_POOL_ID`, and `AWS_REGION` in `load-te
 ./load-tests/scripts/run-stress.sh poll-read
 ```
 
+## Sustained operating point (local, ~5 min)
+
+Flat **45 stakes/sec** (same `cloud-geo` profile as k6 Cloud geo, but local `k6 run`):
+
+```bash
+./load-tests/scripts/run-sustained.sh poll-vote
+./load-tests/scripts/run-sustained.sh combined
+```
+
+Override duration or rate via `GEO_DURATION` / `GEO_STAKE_RATE` in `load-tests/.env`.
+
 Profiles live in `load-tests/k6/lib/config.js`:
 
 | Profile | Market readers | Stake rate | Use case |
@@ -160,6 +171,7 @@ Each runner writes timestamped files to `load-tests/results/` (gitignored):
 | `run-smoke.sh poll-read` | `smoke-poll-read-YYYYMMDD-HHMMSS.json` | `.log` |
 | `run-smoke.sh poll-vote` | `smoke-poll-vote-YYYYMMDD-HHMMSS.json` | `.log` |
 | `run-stress.sh combined` | `stress-combined-YYYYMMDD-HHMMSS.json` | `.log` |
+| `run-sustained.sh poll-vote` | `sustained-poll-vote-YYYYMMDD-HHMMSS.json` | `.log` |
 | `run-mqtt-soak.sh` | `mqtt-soak-YYYYMMDD-HHMMSS.json` | `.log` |
 | `run-k6-cloud-geo.sh` | `cloud-geo-*-YYYYMMDD-HHMMSS.json` | `.log` |
 
