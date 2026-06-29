@@ -74,7 +74,18 @@ export function Dashboard() {
     useTelemetryStream();
   const market = useMarket();
 
-  const [activePlayer, setActivePlayer] = useState<string | null>(null);
+  const [lockedPlayer, setLockedPlayer] = useState<string | null>(null);
+  const [hoverPlayer, setHoverPlayer] = useState<string | null>(null);
+  const activePlayer = lockedPlayer ?? hoverPlayer;
+
+  const handleHoverPlayer = (playerId: string | null) => {
+    if (!lockedPlayer) setHoverPlayer(playerId);
+  };
+
+  const handleLockPlayer = (playerId: string | null) => {
+    setLockedPlayer(playerId);
+    setHoverPlayer(null);
+  };
   const [mobileTab, setMobileTab] = useState<MobileTab>("predict");
   const [banner, setBanner] = useState<Resolution | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -215,14 +226,18 @@ export function Dashboard() {
                   <TelemetryMap
                     events={events}
                     activePlayer={activePlayer}
-                    onActivePlayer={setActivePlayer}
+                    lockedPlayer={lockedPlayer}
+                    onHoverPlayer={handleHoverPlayer}
+                    onLockPlayer={handleLockPlayer}
                   />
                 }
                 feed={
                   <TelemetryFeed
                     events={events}
                     activePlayer={activePlayer}
-                    onActivePlayer={setActivePlayer}
+                    lockedPlayer={lockedPlayer}
+                    onHoverPlayer={handleHoverPlayer}
+                    onLockPlayer={handleLockPlayer}
                     now={now}
                   />
                 }

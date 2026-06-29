@@ -13,7 +13,9 @@ import {
 interface TelemetryMapProps {
   events: TelemetryEvent[];
   activePlayer: string | null;
-  onActivePlayer: (playerId: string | null) => void;
+  lockedPlayer: string | null;
+  onHoverPlayer: (playerId: string | null) => void;
+  onLockPlayer: (playerId: string | null) => void;
 }
 
 interface PlayerDotData {
@@ -34,13 +36,17 @@ function clampPercent(value: number) {
 const PlayerDot = memo(function PlayerDot({
   dot,
   isActive,
+  isLocked,
   isDimmed,
-  onActivePlayer,
+  onHoverPlayer,
+  onLockPlayer,
 }: {
   dot: PlayerDotData;
   isActive: boolean;
+  isLocked: boolean;
   isDimmed: boolean;
-  onActivePlayer: (playerId: string | null) => void;
+  onHoverPlayer: (playerId: string | null) => void;
+  onLockPlayer: (playerId: string | null) => void;
 }) {
   const s = actionStyle(dot.latest.Action);
   const team = playerTeam(dot.playerId);
@@ -58,7 +64,8 @@ const PlayerDot = memo(function PlayerDot({
       }}
       transition={{ type: "spring", stiffness: 120, damping: 18 }}
       style={{ transform: "translate(-50%, -50%)", zIndex: isActive ? 20 : 10 }}
-      onMouseEnter={() => onActivePlayer(dot.playerId)}
+      onMouseEnter={() => onHoverPlayer(dot.playerId)}
+      onClick={() => onLockPlayer(dot.playerId)}
     >
       {(dot.isKill || isActive) && (
         <motion.span
@@ -71,7 +78,7 @@ const PlayerDot = memo(function PlayerDot({
         />
       )}
       <motion.span
-        className="relative block rounded-full ring-2 ring-arena"
+        className={`relative block rounded-full ${isLocked ? "ring-2 ring-brand" : "ring-2 ring-arena"}`}
         animate={{ scale: isActive ? 1.6 : 1 }}
         transition={{ type: "spring", stiffness: 300, damping: 20 }}
         style={{
@@ -117,7 +124,13 @@ const PlayerDot = memo(function PlayerDot({
   );
 });
 
-export function TelemetryMap({ events, activePlayer, onActivePlayer }: TelemetryMapProps) {
+export function TelemetryMap({
+  events,
+  activePlayer,
+  lockedPlayer,
+  onHoverPlayer,
+  onLockPlayer,
+}: TelemetryMapProps) {
   const dots = useMemo<PlayerDotData[]>(() => {
     // Events are newest-first — the first event seen per player is their latest.
     const latest = new Map<string, TelemetryEvent>();
@@ -149,8 +162,9 @@ export function TelemetryMap({ events, activePlayer, onActivePlayer }: Telemetry
 
       <div className="p-3">
         <div
+          data-telemetry-map
           className="relative aspect-square w-full overflow-hidden rounded-md border border-edge bg-arena"
-          onMouseLeave={() => onActivePlayer(null)}
+          onMouseLeave={() => onHoverPlayer(null)}
         >
           <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
             {GRID_LINES.map((p) => (
@@ -172,8 +186,10 @@ export function TelemetryMap({ events, activePlayer, onActivePlayer }: Telemetry
                 key={d.playerId}
                 dot={d}
                 isActive={activePlayer === d.playerId}
+                isLocked={lockedPlayer === d.playerId}
                 isDimmed={activePlayer !== null && activePlayer !== d.playerId}
-                onActivePlayer={onActivePlayer}
+                onHoverPlayer={onHoverPlayer}
+                onLockPlayer={onLockPlayer}
               />
             ))
           )}

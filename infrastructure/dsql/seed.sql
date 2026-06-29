@@ -61,11 +61,11 @@ ON CONFLICT (external_id) DO NOTHING;
 -- Safe to re-run. See .project_utils/updated_idea.md.
 -- ===========================================================================
 
--- Promote the demo poll to a binary market and (re)set a generous lock window
--- so staking is open during demos. Re-running just refreshes the lock time.
+-- Promote the demo poll to a binary market. Staking stays open until an admin
+-- locks or resolves (no auto-expiry — testers may return on different days).
 UPDATE uge.polls
 SET market_type = 'binary',
-    locks_at    = CURRENT_TIMESTAMP + INTERVAL '6 hours',
+    locks_at    = NULL,
     resolved_option_id = NULL,
     resolved_at = NULL,
     status      = 'open'

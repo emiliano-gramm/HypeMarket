@@ -18,7 +18,7 @@
 -- Reopen market
 UPDATE uge.polls
 SET market_type = 'binary',
-    locks_at = CURRENT_TIMESTAMP + INTERVAL '6 hours',
+    locks_at = NULL,
     resolved_option_id = NULL,
     resolved_at = NULL,
     status = 'open'
