@@ -29,6 +29,8 @@ While a match streams, viewers spend free **Hype Credits** on real-time **parimu
 
 Two workloads, two databases. Telemetry is append-only and identical for every viewer. Stakes are transactional (wallet debit, shared pool, settlement).
 
+![HypeMarket architecture: DynamoDB and IoT Core telemetry fan-out, Aurora DSQL sharded stakes, Vercel frontend](submission-assets/architecture-diagram-demo-1080p.png)
+
 ```text
 Telemetry (fast, ephemeral)          Markets (transactional, auditable)
 ─────────────────────────            ───────────────────────────────────
