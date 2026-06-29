@@ -1,6 +1,6 @@
 # various helpful project utilities for humans
 .project_utils/
-submission_assets/
+submission-assets/
 
 # dependencies (all packages in the monorepo)
 node_modules/
